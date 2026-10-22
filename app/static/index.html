@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sah - homelab</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header id="topbar">
+      <div class="brand">
+        <span class="brand-prompt">&gt;_</span>
+        <span class="brand-word"><span class="brand-soft">soft</span><span class="brand-agent">agent</span><span class="brand-hub">hub</span></span>
+      </div>
+      <div class="top-meta">
+        <span class="user-name" id="hub-name"></span>
+        <button id="theme-toggle" class="icon-button" title="Toggle theme" aria-label="Toggle theme">☀</button>
+        <button id="settings-button" class="icon-button" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+    </header>
+
+    <div id="layout">
+      <aside id="sidebar">
+        <div class="sidebar-search">
+          <input id="search" type="search" placeholder="Filter projects…" autocomplete="off" spellcheck="false" />
+        </div>
+        <div id="tree" class="tree"></div>
+        <footer id="sidebar-foot" class="sidebar-foot">
+          <span id="node-summary">—</span>
+          <span id="updated-at"></span>
+        </footer>
+      </aside>
+
+      <div id="resizer" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
+
+      <main id="stage">
+        <div id="panel-tabs" class="panel-tabs" hidden>
+          <div class="panel-tab-list">
+            <button class="panel-tab active" data-panel="oc">opencode</button>
+            <button class="panel-tab" data-panel="host">Host</button>
+            <button class="panel-tab" data-panel="project">Project</button>
+            <button class="panel-tab" data-panel="git">Git <span id="tab-git-count" class="tab-badge" hidden></span></button>
+            <button class="panel-tab" data-panel="sessions">Sessions <span id="tab-session-count" class="tab-badge" hidden></span></button>
+          </div>
+          <div class="panel-actions">
+            <button id="new-session" class="icon-button small" title="New session" aria-label="New session" disabled>+</button>
+            <button id="copy-link" class="icon-button small" title="Copy link" aria-label="Copy link" disabled>⧉</button>
+            <button id="reload-frame" class="icon-button small" title="Reload (r)" aria-label="Reload" disabled>↻</button>
+            <button id="open-window" class="icon-button small" title="Open in new window" aria-label="Open in new window" disabled>↗</button>
+          </div>
+        </div>
+        <div id="stage-subtitle" class="stage-subtitle" hidden>
+          <div id="crumbs" class="crumbs">Select a project</div>
+          <div id="stage-status" class="stage-status" hidden>
+            <span id="status-git" class="status-item"></span>
+            <span id="status-busy" class="status-item"></span>
+            <span id="status-permissions" class="status-item"></span>
+            <span id="status-questions" class="status-item"></span>
+            <span id="status-updated" class="status-item status-updated"></span>
+          </div>
+        </div>
+        <div id="stage-body">
+          <div id="panel-oc" class="panel">
+            <div id="empty" class="empty">
+              <div class="empty-mark">&gt;_</div>
+              <h1><span class="brand-soft">soft</span><span class="brand-agent">agent</span><span class="brand-hub">hub</span></h1>
+              <p>Select a node and project on the left to open its opencode.</p>
+            </div>
+            <div id="frame-loading" class="frame-loading" hidden>
+              <span class="spinner"></span>
+              <span>Opening opencode…</span>
+            </div>
+            <iframe
+              id="oc-frame"
+              title="opencode"
+              hidden
+              allow="clipboard-read; clipboard-write; fullscreen"
+              referrerpolicy="same-origin"
+            ></iframe>
+          </div>
+
+          <section id="panel-host" class="panel native-panel" hidden>
+            <div class="panel-head">
+              <span>Host status</span>
+              <span id="host-summary" class="panel-head-meta"></span>
+              <button id="host-refresh" class="icon-button small" title="Refresh host status" aria-label="Refresh host status">↻</button>
+            </div>
+            <div id="host-body" class="panel-body status-body"></div>
+          </section>
+
+          <section id="panel-project" class="panel native-panel" hidden>
+            <div class="panel-head">
+              <span>Project status</span>
+              <span id="project-summary" class="panel-head-meta"></span>
+              <button id="project-refresh" class="icon-button small" title="Refresh project status" aria-label="Refresh project status">↻</button>
+            </div>
+            <div id="project-body" class="panel-body status-body"></div>
+          </section>
+
+          <section id="panel-git" class="panel native-panel" hidden>
+            <div class="panel-head">
+              <span>Working tree</span>
+              <span id="git-summary" class="panel-head-meta"></span>
+              <button id="git-refresh" class="icon-button small" title="Refresh git status" aria-label="Refresh git status">↻</button>
+            </div>
+            <div id="git-files" class="panel-body"></div>
+          </section>
+
+          <section id="panel-sessions" class="panel native-panel" hidden>
+            <div class="panel-head">
+              <span>Sessions</span>
+              <span id="sessions-summary" class="panel-head-meta"></span>
+              <button id="sessions-new" class="icon-button small" title="New session" aria-label="New session">+</button>
+              <button id="sessions-refresh" class="icon-button small" title="Refresh sessions" aria-label="Refresh sessions">↻</button>
+            </div>
+            <div id="sessions-list" class="panel-body"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div id="drag-overlay" hidden></div>
+    <div id="toast" class="toast" hidden></div>
+
+    <div id="settings-dialog" class="modal" hidden role="dialog" aria-modal="true" aria-label="Settings">
+      <div class="modal-card">
+        <div class="modal-head">
+          <span>Settings</span>
+          <button id="settings-close" class="icon-button small" title="Close" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="setting-row">
+            <span>Name</span>
+            <span class="setting-inline">
+              <input id="setting-name" class="text-input" type="text" spellcheck="false" />
+              <button id="setting-name-save" class="ghost-button small">Save</button>
+            </span>
+          </div>
+          <div class="setting-row"><span>Theme</span><button id="settings-theme" class="ghost-button small">Toggle</button></div>
+          <div class="setting-row"><span>Refresh interval</span><strong id="setting-refresh">—</strong></div>
+          <div class="setting-row"><span>Nodes</span><strong id="setting-nodes">—</strong></div>
+          <div class="setting-divider">Hosts</div>
+          <div id="hosts-list" class="hosts-list"></div>
+          <button id="host-add" class="ghost-button small">Add host</button>
+          <form id="host-form" class="host-form" hidden>
+            <input id="host-name" class="text-input" type="text" placeholder="name" spellcheck="false" />
+            <input id="host-api" class="text-input" type="text" placeholder="api_url" spellcheck="false" />
+            <input id="host-web" class="text-input" type="text" placeholder="web_url" spellcheck="false" />
+            <input id="host-username" class="text-input" type="text" placeholder="username" spellcheck="false" />
+            <input id="host-password-env" class="text-input" type="text" placeholder="password_env" spellcheck="false" />
+            <input id="host-port" class="text-input" type="text" placeholder="proxy_port (optional)" spellcheck="false" />
+            <div class="modal-actions">
+              <button id="host-cancel" class="ghost-button small" type="button">Cancel</button>
+              <button id="host-save" class="ghost-button small" type="submit">Save host</button>
+            </div>
+          </form>
+          <div class="modal-actions">
+            <button id="settings-refresh" class="ghost-button small">Refresh now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

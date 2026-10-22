@@ -1,0 +1,17 @@
+[Unit]
+Description=AgentHub - OpenCode multi-node shell
+After=network.target opencode-serve.service
+Wants=opencode-serve.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/agenthub
+Environment=AGENTHUB_CONF=%h/.config/agenthub/config.yaml
+EnvironmentFile=-%h/.config/agenthub/env
+ExecStart=/usr/bin/env python3 -m app
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,44 @@
+hub:
+  name: agenthub
+  host: 0.0.0.0
+  port: 8670
+  proxy_base_port: 8671
+
+refresh_interval_s: 20
+request_timeout_s: 6
+state_db: ~/.local/share/agenthub/agenthub.db
+
+# Optional read-only MCP. Put the token in ~/.config/agenthub/env:
+#   AGENTHUB_MCP_TOKEN=...
+# Public clients such as ChatGPT need an additional OAuth/HTTPS entry point; see README.
+mcp:
+  host: 127.0.0.1
+  port: 8680
+  path: /mcp
+  # public_url: https://sah-mcp.example.com
+  auth:
+    mode: bearer
+    token_env: AGENTHUB_MCP_TOKEN
+  # Empty means localhost / public_url are allowed automatically; extend when behind a tunnel.
+  allowed_hosts: []
+  allowed_origins: []
+  # Expose only selected nodes or project paths; empty means everything.
+  expose_nodes: []
+  expose_projects: []
+  max_sessions: 100
+  max_projects: 200
+  max_status_items: 100
+  rate_limit_per_min: 60
+
+nodes:
+  - name: local
+    api_url: http://127.0.0.1:4096
+    web_url: http://127.0.0.1:4097
+    username: opencode
+    password_env: OPENCODE_SERVER_PASSWORD
+
+  - name: node2
+    api_url: http://192.0.2.10:4096
+    web_url: http://192.0.2.10:4097
+    username: opencode
+    password_env: OPENCODE_SERVER_PASSWORD

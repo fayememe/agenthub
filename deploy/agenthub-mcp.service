@@ -1,0 +1,25 @@
+[Unit]
+Description=AgentHub MCP (read-only)
+After=network.target agenthub.service
+Wants=agenthub.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/agenthub
+Environment=AGENTHUB_CONF=%h/.config/agenthub/config.yaml
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=-%h/.config/agenthub/env
+ExecStart=/usr/bin/env python3 -m app.mcp
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=default.target
