@@ -5,7 +5,7 @@
 <p align="center"><strong>给所有 opencode，一个统一指挥台。</strong><br>
 一个单操作者视角的 Web 驾驶舱，把散落在多台机器上的 opencode 收拢成一张清晰、可控的工作面。</p>
 
-[English](README.md) · 简体中文 · [设计笔记](docs/pr.md) · [安全边界](docs/security.md)
+<span style="display:block;text-align:center">[English](README.md) · 简体中文 · [设计笔记](docs/pr.md) · [安全边界](docs/security.md)</span>
 
 ![softagenthub 演示环境](docs/snap-overview.png)
 

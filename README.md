@@ -5,7 +5,7 @@
 <p align="center"><strong>One command deck for every opencode you run.</strong><br>
 A single-operator web shell that turns a fleet of opencode nodes into one calm, legible workspace.</p>
 
-[中文](README.zh-CN.md) · [Design notes](docs/pr.md) · [Security](docs/security.md)
+<span style="display:block;text-align:center">[中文](README.zh-CN.md) · [Design notes](docs/pr.md) · [Security](docs/security.md)</span>
 
 ![softagenthub demo fleet](docs/snap-overview.png)
 
