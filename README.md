@@ -6,7 +6,7 @@
 A single-operator web shell that turns a fleet of opencode nodes into one calm, legible workspace.</p>
 
 <p align="center">
-  <a href="README.zh-CN.md">Chinese</a> ·
+  <a href="README.zh-CN.md">中文</a> ·
   <a href="docs/pr.md">Design notes</a> ·
   <a href="docs/security.md">Security</a>
 </p>

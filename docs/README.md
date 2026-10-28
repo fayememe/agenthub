@@ -1,7 +1,7 @@
 # Documentation index
 
 - [README](../README.md): features, architecture, configuration, and running.
-- [README (Chinese)](../README.zh-CN.md): the same guide in Simplified Chinese.
+- [README (中文)](../README.zh-CN.md): the same guide in Simplified Chinese.
 - [Requirements and design](pr.md): project goals, scope, and trade-offs.
 - [Security and deployment boundaries](security.md): LAN restrictions, hardening checklist, and disclaimer.
 - [Main screenshot](snap-overview.png): demo fleet showing the tree, embedded opencode, and Markdown file pane.
