@@ -11,7 +11,7 @@
   <a href="docs/security.md">安全边界</a>
 </p>
 
-![softagenthub 演示环境](docs/snap.png)
+![softagenthub 演示环境](docs/snap-overview.png)
 
 <p align="center"><sub>演示舰队与示例数据；嵌入区域为 opencode 会话示意。</sub></p>
 

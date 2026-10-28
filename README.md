@@ -11,7 +11,7 @@ A single-operator web shell that turns a fleet of opencode nodes into one calm, 
   <a href="docs/security.md">Security</a>
 </p>
 
-![softagenthub demo fleet](docs/snap.png)
+![softagenthub demo fleet](docs/snap-overview.png)
 
 <p align="center"><sub>Demo fleet with sample data. The embedded pane illustrates the opencode session view.</sub></p>
 
