@@ -5,11 +5,7 @@
 <p align="center"><strong>One command deck for every opencode you run.</strong><br>
 A single-operator web shell that turns a fleet of opencode nodes into one calm, legible workspace.</p>
 
-<p align="center">
-  <a href="https://git.softkitty.me/faye/agenthub/src/branch/main/README.zh-CN.md">中文</a> ·
-  <a href="https://git.softkitty.me/faye/agenthub/src/branch/main/docs/pr.md">Design notes</a> ·
-  <a href="https://git.softkitty.me/faye/agenthub/src/branch/main/docs/security.md">Security</a>
-</p>
+[中文](README.zh-CN.md) · [Design notes](docs/pr.md) · [Security](docs/security.md)
 
 ![softagenthub demo fleet](docs/snap-overview.png)
 
