@@ -61,5 +61,6 @@ Build a single-user LAN web shell that shows opencode projects from all nodes on
 
 ## Release
 
+- Public docs: [README](../README.md) (English) and [README (Chinese)](../README.zh-CN.md).
 - LAN single-user only; authentication, TLS, isolation, and other security controls must be added by the deployer. See [security.md](security.md).
 - License: MIT, Copyright (c) 2026 The softagenthub authors.

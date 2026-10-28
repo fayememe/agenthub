@@ -23,11 +23,13 @@ run-mcp:
 
 test:
 	$(PYTHON) -m unittest discover -s tests -v
-	$(PYTHON) -m compileall -q app
+	$(PYTHON) -m compileall -q app adapters skillcell
 	@if [ -x "$$HOME/.local/bin/node" ]; then \
 		"$$HOME/.local/bin/node" --check app/static/app.js; \
+		"$$HOME/.local/bin/node" --check app/static/filepane.js; \
 	elif command -v node >/dev/null 2>&1; then \
 		node --check app/static/app.js; \
+		node --check app/static/filepane.js; \
 	else \
 		echo "node not found, skip js syntax check"; \
 	fi

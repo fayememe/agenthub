@@ -43,5 +43,8 @@ A LAN single-user opencode aggregation web shell: a node/project/session tree on
 - [x] Reuse and clean up New session draft tabs
 - [x] Session index from web `/api/session`, including missing global/subdirectory sessions (merged into an Other project)
 - [x] Read-only MCP server (Streamable HTTP/bearer, GET-only, redaction, rate limiting)
+- [x] Attention inbox with permission/question replies and follow-up prompts
+- [x] Read-only file pane with preview, diff, and search
+- [x] Optional skillcell audit pipeline with evidence, proposals, review, and chat
 - [ ] MCP public access: OAuth 2.1 + tunnel + ChatGPT connector
-- [ ] Later: panel type abstraction, other agents, permission/question replies
+- [ ] Later: panel type abstraction and other agents

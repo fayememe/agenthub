@@ -30,6 +30,22 @@ class FakeOC(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def do_POST(self):
+        if not str(self.headers.get("Authorization", "")).startswith("Basic "):
+            self._json({"error": "unauthorized"}, 401)
+            return
+        parsed = urlparse(self.path)
+        length = int(self.headers.get("Content-Length") or 0)
+        if length:
+            try:
+                json.loads(self.rfile.read(length).decode())
+            except Exception:
+                pass
+        if parsed.path.endswith(("/reply", "/reject", "/message")):
+            self._json({"ok": True})
+        else:
+            self._json({"error": "not found"}, 404)
+
     def do_GET(self):
         if not str(self.headers.get("Authorization", "")).startswith("Basic "):
             self._json({"error": "unauthorized"}, 401)
@@ -278,6 +294,61 @@ class ApiTests(unittest.TestCase):
 
             response = client.post("/api/favorites", json={"node": "missing", "path": PROJECT})
             self.assertEqual(response.status_code, 404)
+
+    def test_inbox_permission_reply(self):
+        with self._client() as client:
+            app = self.app
+            node = app.state.config.nodes[0]
+            app.state.activity.handle_event(
+                node,
+                {
+                    "type": "permission.asked",
+                    "properties": {
+                        "sessionID": SESSION_ID,
+                        "id": "per_test",
+                        "permission": "bash",
+                        "patterns": ["*"],
+                    },
+                },
+                source=node.web_url,
+            )
+            inbox = client.get("/api/inbox").json()
+            self.assertEqual(inbox["counts"]["permission"], 1)
+            self.assertEqual(inbox["items"][0]["requestID"], "per_test")
+
+            response = client.post(
+                "/api/inbox/permission",
+                json={"node": "fake", "requestID": "per_test", "reply": "once"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(client.get("/api/inbox").json()["counts"]["permission"], 0)
+
+    def test_inbox_question_reply(self):
+        with self._client() as client:
+            app = self.app
+            node = app.state.config.nodes[0]
+            app.state.activity.handle_event(
+                node,
+                {
+                    "type": "question.asked",
+                    "properties": {
+                        "sessionID": SESSION_ID,
+                        "id": "que_test",
+                        "questions": [
+                            {"header": "Choose", "question": "Pick one", "options": [{"label": "A", "description": ""}]}
+                        ],
+                    },
+                },
+                source=node.web_url,
+            )
+            self.assertEqual(client.get("/api/inbox").json()["counts"]["question"], 1)
+
+            response = client.post(
+                "/api/inbox/question",
+                json={"node": "fake", "requestID": "que_test", "answers": [["A"]]},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(client.get("/api/inbox").json()["counts"]["question"], 0)
 
     def test_static_files(self):
         with self._client() as client:

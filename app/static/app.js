@@ -5,6 +5,7 @@ const els = {
   search: $("search"),
   sidebar: $("sidebar"),
   resizer: $("resizer"),
+  sidebarToggle: $("sidebar-toggle"),
   overlay: $("drag-overlay"),
   frame: $("oc-frame"),
   empty: $("empty"),
@@ -17,6 +18,7 @@ const els = {
   openWindow: $("open-window"),
   toast: $("toast"),
   stageSubtitle: $("stage-subtitle"),
+  stageBody: $("stage-body"),
   stageStatus: $("stage-status"),
   statusGit: $("status-git"),
   statusBusy: $("status-busy"),
@@ -46,6 +48,14 @@ const els = {
   sessionsRefresh: $("sessions-refresh"),
   copyLink: $("copy-link"),
   themeToggle: $("theme-toggle"),
+  inboxButton: $("inbox-button"),
+  inboxCount: $("inbox-count"),
+  inboxView: $("inbox-view"),
+  inboxBack: $("inbox-back"),
+  inboxRefresh: $("inbox-refresh"),
+  inboxSummary: $("inbox-summary"),
+  inboxList: $("inbox-list"),
+  inboxDetail: $("inbox-detail"),
   settingsButton: $("settings-button"),
   settingsDialog: $("settings-dialog"),
   settingsClose: $("settings-close"),
@@ -93,8 +103,10 @@ const state = {
   favorites: new Set(storage.get("agenthub.favorites", [])),
   lastSessions: storage.get("agenthub.lastSessions", {}),
   selected: storage.get("agenthub.selected", null),
-  sidebarWidth: Number(localStorage.getItem("agenthub.sidebarWidth") || 300),
+  sidebarRatio: loadSidebarRatio(),
   sidebarCollapsed: false,
+  sidebarAuto: false,
+  lastSidebarNarrow: window.innerWidth < 820,
   restored: false,
   frameTimer: null,
   projectStatus: null,
@@ -108,6 +120,16 @@ const state = {
   activePanel: storage.get("agenthub.activePanel", "oc"),
   openToken: 0,
   frameBooted: false,
+  switching: false,
+  pendingActivityRefresh: false,
+  lastActivityRefresh: 0,
+  treeLoading: false,
+  treePending: false,
+  inbox: null,
+  inboxLoading: false,
+  inboxOpen: false,
+  inboxSelectedId: null,
+  inboxContent: new Map(),
 };
 
 function el(tag, props = {}, ...children) {
@@ -312,6 +334,7 @@ function handleFrameRoute(event) {
   state.selected.title = hit?.title || null;
   storage.set("agenthub.selected", state.selected);
   rememberSession(node, project, sessionId, hit?.title);
+  markActivityRead(node, project, sessionId);
   updateHash();
   updateCrumbs();
   renderTree();
@@ -327,6 +350,408 @@ function readHash() {
   const project = node?.projects?.find((item) => item.b64 === b64);
   if (!node || !project) return null;
   return { node, project, sessionId: sessionId ? decodeURIComponent(sessionId) : null };
+}
+
+function activityInfo(activity, compact = false) {
+  if (!activity) return null;
+  const permissions = Number(activity.permissions || 0);
+  const questions = Number(activity.questions || 0);
+  if (permissions) {
+    return {
+      kind: "permission",
+      text: compact ? `perm${permissions > 1 ? ` ${permissions}` : ""}` : `permission${permissions > 1 ? ` ${permissions}` : ""}`,
+      title: `${permissions} permission request(s)`,
+    };
+  }
+  if (questions) {
+    return {
+      kind: "question",
+      text: compact ? `ask${questions > 1 ? ` ${questions}` : ""}` : `answer${questions > 1 ? ` ${questions}` : ""}`,
+      title: `${questions} question(s)`,
+    };
+  }
+  if (activity.error) return { kind: "error", text: "error", title: "Session error" };
+  if (activity.done) return { kind: "done", text: "done", title: "Response finished" };
+  if (activity.busy) return { kind: "busy", text: compact ? "run" : "busy", title: "Session running" };
+  return null;
+}
+
+function projectActivityInfo(project) {
+  const permissions = Number(project.pending_permissions || 0);
+  const questions = Number(project.pending_questions || 0);
+  const errors = Number(project.error_sessions || 0);
+  const done = Number(project.done_sessions || 0);
+  const busy = Number(project.busy_sessions || 0);
+  const info = activityInfo({
+    permissions,
+    questions,
+    error: errors > 0,
+    done: done > 0,
+    busy: busy > 0,
+  });
+  if (!info) return null;
+  if (info.kind === "error" && errors > 1) info.text = `error ${errors}`;
+  if (info.kind === "done" && done > 1) info.text = `done ${done}`;
+  if (info.kind === "busy" && busy > 1) info.text = `busy ${busy}`;
+  const details = [];
+  if (permissions) details.push(`${permissions} permission`);
+  if (questions) details.push(`${questions} question`);
+  if (errors) details.push(`${errors} error`);
+  if (done) details.push(`${done} done`);
+  if (busy) details.push(`${busy} busy`);
+  if (details.length) info.title = details.join(" · ");
+  return info;
+}
+
+function activityBadge(info, compact = false) {
+  return el(
+    "span",
+    { class: `activity-badge ${info.kind}${compact ? " tiny" : ""}`, title: info.title },
+    info.text,
+  );
+}
+
+function waitingCount() {
+  const tree = state.tree;
+  if (!tree) return 0;
+  return (tree.nodes || []).reduce(
+    (count, node) =>
+      count +
+      (node.projects || []).reduce(
+        (sum, project) =>
+          sum +
+          Number(project.pending_permissions || 0) +
+          Number(project.pending_questions || 0) +
+          Number(project.error_sessions || 0) +
+          Number(project.done_sessions || 0),
+        0,
+      ),
+    0,
+  );
+}
+
+function updateInboxBadge() {
+  if (!els.inboxCount) return;
+  const count = waitingCount();
+  els.inboxCount.textContent = String(count);
+  els.inboxCount.hidden = count <= 0;
+}
+
+let inboxRefreshTimer = null;
+
+function scheduleInboxRefresh(delay = 700) {
+  if (!state.inboxOpen) return;
+  clearTimeout(inboxRefreshTimer);
+  inboxRefreshTimer = setTimeout(() => fetchInbox(), delay);
+}
+
+function inboxButton(label, handler) {
+  return el("button", { class: "ghost-button small", onclick: handler }, label);
+}
+
+function inboxOpenButton(item) {
+  return inboxButton("Open", () => inboxOpen(item));
+}
+
+function inboxErrorMessage(value) {
+  if (!value) return "Session error";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function inboxContentKey(item) {
+  return `${item.node}:${item.sessionID}:${item.updated || 0}`;
+}
+
+async function loadInboxContent(item) {
+  const key = inboxContentKey(item);
+  if (state.inboxContent.has(key)) return state.inboxContent.get(key);
+  state.inboxContent.set(key, null);
+  try {
+    const params = new URLSearchParams({ node: item.node, sessionID: item.sessionID });
+    const data = await api(`/api/inbox/content?${params}`);
+    state.inboxContent.set(key, data);
+    return data;
+  } catch {
+    const data = { content: "" };
+    state.inboxContent.set(key, data);
+    return data;
+  }
+}
+
+function renderInboxDetail(item) {
+  const head = el(
+    "div",
+    { class: "inbox-detail-head" },
+    el("span", { class: `activity-badge ${item.kind}` }, item.kind === "question" ? "answer" : item.kind),
+    el("span", { class: "inbox-item-title" }, [item.projectName, item.sessionTitle].filter(Boolean).join(" / ") || item.sessionTitle),
+    el("span", { class: "inbox-item-meta" }, `${item.node} · ${relTime(item.updated)}`),
+  );
+
+  const content = el("div", { class: "inbox-content" });
+  content.append(el("div", { class: "inbox-content-label" }, item.kind === "done" ? "Response" : "Recent context"));
+  const contentText = el("div", { class: "inbox-content-text" }, "Loading…");
+  content.append(contentText);
+  loadInboxContent(item).then((data) => {
+    if (state.inboxSelectedId !== item.id) return;
+    contentText.textContent = (data?.content || "").trim() || "(No text content)";
+  });
+
+  const body = el("div", { class: "inbox-item-body" });
+  const actions = el("div", { class: "inbox-detail-actions" });
+
+  if (item.kind === "permission") {
+    const details = [`Permission: ${item.permission || "request"}`];
+    if (Array.isArray(item.patterns) && item.patterns.length) details.push(item.patterns.join(", "));
+    body.append(el("div", {}, details.join(" · ")));
+    actions.append(
+      inboxButton("Allow once", () => inboxPermission(item, "once")),
+      inboxButton("Always", () => inboxPermission(item, "always")),
+      inboxButton("Reject", () => inboxPermission(item, "reject")),
+      inboxOpenButton(item),
+    );
+  } else if (item.kind === "question") {
+    const groups = [];
+    const questions = el("div", { class: "inbox-questions" });
+    const list = Array.isArray(item.questions) ? item.questions : [];
+    list.forEach((question, index) => {
+      const options = Array.isArray(question.options) ? question.options : [];
+      const inputs = [];
+      const name = `inbox_${item.requestID}_${index}`;
+      const box = el(
+        "div",
+        { class: "inbox-question" },
+        el("div", { class: "inbox-question-title" }, question.header || `Question ${index + 1}`),
+        el("div", { class: "inbox-question-text" }, question.question || ""),
+      );
+      if (options.length) {
+        const choices = el("div", { class: "inbox-options" });
+        for (const option of options) {
+          const input = el("input", {
+            type: question.multiple ? "checkbox" : "radio",
+            name,
+            value: option.label || "",
+          });
+          inputs.push(input);
+          choices.append(
+            el(
+              "label",
+              { class: "inbox-option" },
+              input,
+              el(
+                "span",
+                {},
+                option.label || "",
+                option.description ? el("span", { class: "inbox-option-desc" }, ` — ${option.description}`) : null,
+              ),
+            ),
+          );
+        }
+        box.append(choices);
+      }
+      let custom = null;
+      if (question.custom || !options.length) {
+        custom = el("input", { class: "inbox-input", type: "text", placeholder: "Your answer…" });
+        box.append(custom);
+      }
+      groups.push({ inputs, custom });
+      questions.append(box);
+    });
+    body.append(questions);
+    actions.append(
+      inboxButton("Send answer", async () => {
+        const answers = groups.map((group) => {
+          const selected = group.inputs.filter((input) => input.checked).map((input) => input.value);
+          if (group.custom?.value.trim()) selected.push(group.custom.value.trim());
+          return selected;
+        });
+        await inboxQuestion(item, answers, false);
+      }),
+      inboxButton("Reject", () => inboxQuestion(item, null, true)),
+      inboxOpenButton(item),
+    );
+  } else if (item.kind === "error") {
+    body.append(el("pre", { class: "inbox-error" }, inboxErrorMessage(item.error)));
+    const textarea = el("textarea", { class: "inbox-textarea", placeholder: "Reply to this session…" });
+    body.append(textarea);
+    actions.append(
+      inboxButton("Send reply", () => inboxPrompt(item, textarea.value)),
+      inboxOpenButton(item),
+      inboxButton("Mark read", () => inboxRead(item)),
+    );
+  } else {
+    body.append(el("div", {}, "Reply to continue this session."));
+    const textarea = el("textarea", { class: "inbox-textarea", placeholder: "Reply to this session…" });
+    body.append(textarea);
+    actions.append(
+      inboxButton("Send reply", () => inboxPrompt(item, textarea.value)),
+      inboxOpenButton(item),
+      inboxButton("Mark read", () => inboxRead(item)),
+    );
+  }
+
+  els.inboxDetail.replaceChildren(head, content, body, actions);
+}
+
+function renderInboxList() {
+  if (!state.inbox) {
+    els.inboxList.replaceChildren(el("div", { class: "inbox-empty" }, "Loading inbox…"));
+    els.inboxDetail.replaceChildren(el("div", { class: "inbox-empty" }, "Loading…"));
+    return;
+  }
+  const counts = state.inbox.counts || {};
+  els.inboxSummary.textContent = counts.total
+    ? `${counts.permission || 0} permission · ${counts.question || 0} answer · ${counts.error || 0} error · ${counts.done || 0} done`
+    : "All caught up";
+
+  const items = state.inbox.items || [];
+  if (!items.length) {
+    els.inboxList.replaceChildren(el("div", { class: "inbox-empty" }, "No items waiting."));
+    els.inboxDetail.replaceChildren(el("div", { class: "inbox-empty" }, "All caught up."));
+    state.inboxSelectedId = null;
+    return;
+  }
+
+  if (!state.inboxSelectedId || !items.some((item) => item.id === state.inboxSelectedId)) {
+    state.inboxSelectedId = items[0].id;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const item of items) {
+    const selected = item.id === state.inboxSelectedId;
+    fragment.append(
+      el(
+        "div",
+        {
+          class: `inbox-item${selected ? " selected" : ""}`,
+          onclick: () => {
+            state.inboxSelectedId = item.id;
+            renderInboxList();
+          },
+        },
+        el(
+          "div",
+          { class: "inbox-item-head" },
+          el("span", { class: `activity-badge ${item.kind}` }, item.kind === "question" ? "answer" : item.kind),
+          el("span", { class: "inbox-item-title" }, item.sessionTitle),
+        ),
+        el("div", { class: "inbox-item-meta" }, `${item.projectName || item.node} · ${relTime(item.updated)}`),
+      ),
+    );
+  }
+  els.inboxList.replaceChildren(fragment);
+  const current = items.find((item) => item.id === state.inboxSelectedId);
+  if (current) renderInboxDetail(current);
+}
+
+function renderInbox() {
+  renderInboxList();
+}
+
+async function fetchInbox() {
+  if (state.inboxLoading) return;
+  state.inboxLoading = true;
+  try {
+    const previous = state.inboxSelectedId;
+    state.inbox = await api("/api/inbox");
+    const items = state.inbox.items || [];
+    if (!items.some((item) => item.id === previous)) {
+      state.inboxSelectedId = items[0]?.id || null;
+    }
+    renderInboxList();
+  } catch (error) {
+    toast(`Failed to load inbox: ${error.message || error}`);
+  } finally {
+    state.inboxLoading = false;
+  }
+  updateInboxBadge();
+}
+
+function openInbox() {
+  state.inboxOpen = true;
+  renderPanels();
+  renderInboxList();
+  fetchInbox();
+}
+
+function closeInbox() {
+  state.inboxOpen = false;
+  renderPanels();
+}
+
+async function inboxPermission(item, reply) {
+  try {
+    await api("/api/inbox/permission", {
+      method: "POST",
+      body: JSON.stringify({ node: item.node, requestID: item.requestID, reply }),
+    });
+    await fetchInbox();
+    scheduleActivityRefresh();
+  } catch (error) {
+    toast(`Permission reply failed: ${error.message || error}`);
+  }
+}
+
+async function inboxQuestion(item, answers, reject) {
+  try {
+    await api("/api/inbox/question", {
+      method: "POST",
+      body: JSON.stringify({ node: item.node, requestID: item.requestID, answers, reject }),
+    });
+    await fetchInbox();
+    scheduleActivityRefresh();
+  } catch (error) {
+    toast(`Question reply failed: ${error.message || error}`);
+  }
+}
+
+async function inboxPrompt(item, text) {
+  if (!text.trim()) return;
+  try {
+    await api("/api/inbox/prompt", {
+      method: "POST",
+      body: JSON.stringify({ node: item.node, sessionID: item.sessionID, text }),
+    });
+    await fetchInbox();
+    scheduleActivityRefresh();
+  } catch (error) {
+    toast(`Reply failed: ${error.message || error}`);
+  }
+}
+
+async function inboxRead(item) {
+  try {
+    await api("/api/inbox/read", {
+      method: "POST",
+      body: JSON.stringify({ node: item.node, sessionID: item.sessionID }),
+    });
+    await fetchInbox();
+    scheduleActivityRefresh();
+  } catch (error) {
+    toast(`Failed to mark read: ${error.message || error}`);
+  }
+}
+
+function inboxOpen(item) {
+  const node = nodeByName(item.node);
+  if (!node) return;
+  let project = projectByName(node, item.projectPath);
+  if (!project && item.projectPath) {
+    project = {
+      path: item.projectPath,
+      name: item.projectName || (item.projectPath === "__other__" ? "Other" : "Project"),
+      b64: item.projectB64 || (item.projectPath === "__other__" ? "other" : ""),
+      kind: item.projectPath === "__other__" ? "other" : "project",
+      vcs: null,
+    };
+  }
+  if (!project) return;
+  closeInbox();
+  openProject(node, project, item.sessionID, { panel: "oc" });
 }
 
 function renderHostIcon(online) {
@@ -506,6 +931,7 @@ function renderProject(node, project) {
   const meta = el("span", { class: "project-meta" });
   if (sessionCount) meta.append(el("span", { class: "count", title: `${sessionCount} sessions` }, sessionCount));
   if (updated) meta.append(el("span", { title: "last session activity" }, updated));
+  const activity = projectActivityInfo(project);
 
   const row = el(
     "div",
@@ -524,6 +950,7 @@ function renderProject(node, project) {
     },
     caret,
     el("span", { class: "project-main" }, el("span", { class: "project-name" }, project.name)),
+    activity ? activityBadge(activity) : null,
     el(
       "span",
       { class: "project-tags" },
@@ -596,6 +1023,7 @@ function renderSessions(node, project) {
         },
         el("span", { class: `dot ${isBusy(session.status) ? "busy" : ""}` }),
         el("span", { class: "session-title" }, session.title),
+        activityInfo(session.activity, true) ? activityBadge(activityInfo(session.activity, true), true) : null,
         el("span", { class: "session-time" }, relTime(session.updated)),
       ),
     );
@@ -763,10 +1191,36 @@ function restoreSelection() {
   else {
     state.selected = null;
     storage.set("agenthub.selected", null);
+    window.agenthubFilePane?.setProject(null);
   }
 }
 
+function setFrameSource(url, token) {
+  let currentOrigin = null;
+  let nextOrigin = null;
+  try {
+    currentOrigin = els.frame.src ? new URL(els.frame.src).origin : null;
+  } catch {}
+  try {
+    nextOrigin = new URL(url).origin;
+  } catch {}
+  if (currentOrigin && nextOrigin && currentOrigin !== nextOrigin) {
+    state.frameBooted = false;
+    els.frame.src = "about:blank";
+    requestAnimationFrame(() => {
+      if (token === undefined || token === state.openToken) {
+        state.frameBooted = false;
+        els.frame.src = url;
+      }
+    });
+    return;
+  }
+  state.frameBooted = false;
+  els.frame.src = url;
+}
+
 async function openProject(node, project, sessionId = null, options = {}) {
+  if (state.inboxOpen) closeInbox();
   state.hostView = null;
   const previous = state.selected;
   const sameProject = Boolean(previous && previous.node === node.name && previous.path === project.path);
@@ -774,23 +1228,54 @@ async function openProject(node, project, sessionId = null, options = {}) {
   const explicitSession = sessionId || null;
   const forceNew = options.forceNew === true;
   const token = ++state.openToken;
-  state.frameBooted = false;
+  const remembered = state.lastSessions[key];
+  const cachedSessions = state.sessions.get(key)?.data || [];
+  const cachedSession =
+    !explicitSession && !forceNew
+      ? remembered?.id
+        ? cachedSessions.find((item) => item.id === remembered.id)
+        : cachedSessions[0]
+      : null;
 
+  const initialSessionId =
+    explicitSession ||
+    (!forceNew ? remembered?.id : null) ||
+    (!forceNew ? cachedSession?.id : null) ||
+    null;
+  const initialTitle =
+    options.title ||
+    (initialSessionId && initialSessionId === remembered?.id ? remembered.title : null) ||
+    (cachedSession && initialSessionId === cachedSession.id ? cachedSession.title : null) ||
+    null;
+  const noSessions = Number(project.session_count || 0) === 0;
+  const canShowFrame = Boolean(initialSessionId) || noSessions || forceNew;
+
+  state.switching = true;
+  state.frameBooted = false;
   state.selected = {
     node: node.name,
     path: project.path,
     b64: project.b64,
     name: project.name,
-    sessionId: explicitSession,
-    title: options.title || null,
+    sessionId: initialSessionId,
+    title: initialTitle,
   };
   storage.set("agenthub.selected", state.selected);
+  window.agenthubFilePane?.setProject({
+    node: node.name,
+    path: project.path,
+    name: project.name,
+    kind: project.kind || "project",
+  });
+
+  if (explicitSession) rememberSession(node, project, explicitSession, options.title);
+  else if (initialSessionId && remembered?.id === initialSessionId && remembered.title && !state.selected.title) {
+    state.selected.title = remembered.title;
+  }
 
   if (options.panel) setActivePanel(options.panel, false);
   else if (explicitSession) setActivePanel("oc", false);
   else if (!state.activePanel) setActivePanel("oc", false);
-
-  if (explicitSession) rememberSession(node, project, explicitSession, options.title);
 
   els.frame.hidden = false;
   els.empty.hidden = true;
@@ -799,8 +1284,31 @@ async function openProject(node, project, sessionId = null, options = {}) {
   updateCrumbs();
   updateActions();
   renderTree();
+  markActivityRead(node, project, state.selected.sessionId);
 
-  if (!explicitSession && !forceNew) {
+  const finishSwitch = () => {
+    if (token !== state.openToken) return;
+    state.switching = false;
+    if (state.pendingActivityRefresh) {
+      state.pendingActivityRefresh = false;
+      scheduleActivityRefresh(600);
+    }
+  };
+
+  const applyFrame = () => {
+    let url = frameUrl(node, project, state.selected.sessionId);
+    if (!state.selected.sessionId && !forceNew && project.kind !== "other") {
+      const draftId = state.lastSessions[key]?.draftId;
+      if (draftId) url = draftUrl(node, draftId, project.path);
+    }
+    if (els.frame.src === url) reloadFrame();
+    else setFrameSource(url, token);
+    finishSwitch();
+  };
+
+  if (canShowFrame) {
+    applyFrame();
+  } else {
     let resolved = null;
     try {
       resolved = await resolveLastSession(node, project);
@@ -814,32 +1322,44 @@ async function openProject(node, project, sessionId = null, options = {}) {
       rememberSession(node, project, resolved.id, resolved.title);
       updateHash();
       updateCrumbs();
+      markActivityRead(node, project, resolved.id);
     } else {
       const entry = state.sessions.get(key);
       if (entry && !entry.error) toast("This project has no sessions yet. Opened a new session.");
     }
+    applyFrame();
+  }
+
+  if (!explicitSession && !forceNew && initialSessionId) {
+    const pendingSession = state.selected.sessionId;
+    resolveLastSession(node, project)
+      .then((resolved) => {
+        if (token !== state.openToken || state.selected.sessionId !== pendingSession) return;
+        if (!resolved || resolved.id === state.selected.sessionId) return;
+        state.selected.sessionId = resolved.id;
+        state.selected.title = resolved.title || null;
+        storage.set("agenthub.selected", state.selected);
+        rememberSession(node, project, resolved.id, resolved.title);
+        updateHash();
+        updateCrumbs();
+        let url = frameUrl(node, project, resolved.id);
+        if (els.frame.src === url) reloadFrame();
+        else setFrameSource(url, token);
+        markActivityRead(node, project, resolved.id);
+      })
+      .catch(() => {});
   }
 
   if (token !== state.openToken) return;
-
-  let url = frameUrl(node, project, state.selected.sessionId);
-  if (!state.selected.sessionId && !forceNew && project.kind !== "other") {
-    const draftId = state.lastSessions[key]?.draftId;
-    if (draftId) url = draftUrl(node, draftId, project.path);
-  }
-  if (els.frame.src === url) {
-    reloadFrame();
-  } else {
-    state.frameBooted = false;
-    els.frame.src = url;
-  }
-
+  finishSwitch();
   state.projectStatus = null;
   state.hostStatus = null;
   renderProjectStatus();
   loadProjectStatus();
   if (state.activePanel === "host") loadHostStatus();
-  loadSessions(node, project, sameProject && Boolean(explicitSession), sameProject || Boolean(explicitSession));
+  if (state.expanded.has(key) || state.activePanel === "sessions") {
+    loadSessions(node, project, false, true);
+  }
   renderPanels();
 }
 
@@ -899,6 +1419,7 @@ function setActivePanel(panel, rerender = true) {
   }
   state.activePanel = panel;
   storage.set("agenthub.activePanel", panel);
+  window.agenthubFilePane?.setPanel(panel);
   if (!rerender) return;
   renderPanels();
 
@@ -935,6 +1456,16 @@ function updateTabBadges() {
 }
 
 function renderPanels() {
+  if (state.inboxOpen) {
+    els.inboxView.hidden = false;
+    els.panelTabs.hidden = true;
+    els.stageSubtitle.hidden = true;
+    els.stageBody.hidden = true;
+    return;
+  }
+  els.inboxView.hidden = true;
+  els.stageBody.hidden = false;
+
   const hostView = Boolean(state.hostView && nodeByName(state.hostView));
   const selected = Boolean(state.selected);
   const visible = hostView || selected;
@@ -957,6 +1488,8 @@ function renderPanels() {
     els.gitFiles.replaceChildren();
     els.sessionsSummary.textContent = "";
     els.sessionsList.replaceChildren();
+    window.agenthubFilePane?.setProject(null);
+    window.agenthubFilePane?.setPanel(activePanel);
     return;
   }
 
@@ -979,6 +1512,7 @@ function renderPanels() {
   renderGitPanel();
   renderSessionsPanel();
   updateTabBadges();
+  window.agenthubFilePane?.setPanel(activePanel);
 }
 
 function statusCard(title, meta, ...children) {
@@ -1066,6 +1600,7 @@ async function loadHostStatus(force = false) {
 }
 
 function openHost(node) {
+  if (state.inboxOpen) closeInbox();
   state.hostView = node.name;
   state.hostStatus = null;
   state.activePanel = "host";
@@ -1470,7 +2005,12 @@ function renderSessionsPanel() {
         el(
           "span",
           { class: "session-main" },
-          el("div", { class: "session-name" }, session.title),
+          el(
+            "div",
+            { class: "session-name" },
+            session.title,
+            activityInfo(session.activity, true) ? activityBadge(activityInfo(session.activity, true), true) : null,
+          ),
           el("div", { class: "session-sub" }, [sub, counts].filter(Boolean).join("  ·  ") || "—"),
         ),
         el(
@@ -1774,25 +2314,73 @@ function updateSummary() {
       count + (node.projects || []).reduce((sum, project) => sum + Number(project.session_count || 0), 0),
     0,
   );
+  const waiting = waitingCount();
   els.nodeSummary.textContent = `${online}/${nodes.length} online · ${projects} projects · ${sessions} sessions`;
-  els.updatedAt.textContent = clockTime(state.tree.generated_at);
+  els.updatedAt.textContent = `${waiting ? `${waiting} waiting · ` : ""}${clockTime(state.tree.generated_at)}`;
+  els.updatedAt.classList.toggle("attention", waiting > 0);
+  els.updatedAt.title = waiting ? `${waiting} item(s) need your attention` : "Last refresh";
+  updateInboxBadge();
   if (!els.settingsDialog.hidden) updateSettingsInfo();
 }
 
+function clampSidebarRatio(value) {
+  return Math.max(0.14, Math.min(0.45, Number(value) || 0.2));
+}
+
+function loadSidebarRatio() {
+  const stored = Number(localStorage.getItem("agenthub.sidebarRatio"));
+  if (Number.isFinite(stored) && stored > 0) return clampSidebarRatio(stored);
+  const legacy = Number(localStorage.getItem("agenthub.sidebarWidth"));
+  if (Number.isFinite(legacy) && legacy > 0) {
+    return clampSidebarRatio(legacy / Math.max(1, window.innerWidth));
+  }
+  return 0.2;
+}
+
+function applySidebarWidth() {
+  const width = Math.round(window.innerWidth * state.sidebarRatio);
+  document.documentElement.style.setProperty("--sidebar-width", `${width}px`);
+}
+
 function setSidebarWidth(width) {
-  const max = Math.max(260, Math.min(620, window.innerWidth - 380));
-  const clamped = Math.max(220, Math.min(max, Math.round(width)));
-  state.sidebarWidth = clamped;
-  document.documentElement.style.setProperty("--sidebar-width", `${clamped}px`);
+  state.sidebarRatio = clampSidebarRatio(Number(width) / Math.max(1, window.innerWidth));
+  applySidebarWidth();
+  window.agenthubFilePane?.layoutChanged?.();
 }
 
 function persistSidebarWidth() {
-  localStorage.setItem("agenthub.sidebarWidth", String(state.sidebarWidth));
+  localStorage.setItem("agenthub.sidebarRatio", String(state.sidebarRatio));
 }
 
 function applySidebarState() {
-  setSidebarWidth(state.sidebarWidth);
+  applySidebarWidth();
   document.body.classList.toggle("sidebar-collapsed", state.sidebarCollapsed);
+  if (els.sidebarToggle) {
+    els.sidebarToggle.classList.toggle("active", !state.sidebarCollapsed);
+    els.sidebarToggle.title = state.sidebarCollapsed ? "Show sidebar" : "Hide sidebar";
+  }
+  window.agenthubFilePane?.layoutChanged?.();
+}
+
+function toggleSidebar() {
+  state.sidebarCollapsed = !state.sidebarCollapsed;
+  state.sidebarAuto = false;
+  applySidebarState();
+}
+
+function handleSidebarAuto() {
+  const narrow = window.innerWidth < 820;
+  if (narrow === state.lastSidebarNarrow) return;
+  state.lastSidebarNarrow = narrow;
+  if (narrow && !state.sidebarCollapsed) {
+    state.sidebarCollapsed = true;
+    state.sidebarAuto = true;
+    applySidebarState();
+  } else if (!narrow && state.sidebarAuto) {
+    state.sidebarCollapsed = false;
+    state.sidebarAuto = false;
+    applySidebarState();
+  }
 }
 
 function initResizer() {
@@ -1823,16 +2411,23 @@ function initResizer() {
   });
 
   els.resizer.addEventListener("dblclick", () => {
-    setSidebarWidth(300);
+    state.sidebarRatio = 0.2;
+    applySidebarWidth();
     persistSidebarWidth();
   });
 
   window.addEventListener("resize", () => {
-    setSidebarWidth(state.sidebarWidth);
+    handleSidebarAuto();
+    applySidebarState();
   });
 }
 
 async function loadTree(force = false) {
+  if (state.treeLoading) {
+    state.treePending = state.treePending || force;
+    return;
+  }
+  state.treeLoading = true;
   try {
     const suffix = force ? "?refresh=1" : "";
     state.tree = await api(`/api/tree${suffix}`);
@@ -1843,6 +2438,13 @@ async function loadTree(force = false) {
     restoreSelection();
   } catch (error) {
     toast(`Failed to load nodes: ${error.message || error}`);
+  } finally {
+    state.treeLoading = false;
+    if (state.treePending) {
+      const pendingForce = state.treePending;
+      state.treePending = false;
+      setTimeout(() => loadTree(pendingForce), 150);
+    }
   }
 }
 
@@ -1851,7 +2453,58 @@ function refreshSelected() {
   const selected = selectedProject();
   if (!selected) return;
   loadProjectStatus();
-  loadSessions(selected.node, selected.project, true, true);
+  const key = sessionKey(selected.node.name, selected.project.path);
+  if (state.expanded.has(key) || state.activePanel === "sessions") {
+    loadSessions(selected.node, selected.project, true, true);
+  }
+}
+
+let activityRefreshTimer = null;
+
+function scheduleActivityRefresh(delay = 900) {
+  if (state.switching) {
+    state.pendingActivityRefresh = true;
+    return;
+  }
+  const elapsed = Date.now() - state.lastActivityRefresh;
+  const wait = Math.max(delay, 1500 - elapsed);
+  clearTimeout(activityRefreshTimer);
+  activityRefreshTimer = setTimeout(() => {
+    if (document.visibilityState === "visible") {
+      state.lastActivityRefresh = Date.now();
+      loadTree(true);
+    }
+  }, wait);
+}
+
+async function markActivityRead(node, project, sessionId = null) {
+  if (!sessionId) return;
+  const key = sessionKey(node.name, project.path);
+  const entry = state.sessions.get(key);
+  const session = entry?.data?.find((item) => item.id === sessionId);
+  const needsRead =
+    Number(project.done_sessions || 0) > 0 ||
+    Number(project.error_sessions || 0) > 0 ||
+    Boolean(session?.activity?.done) ||
+    Boolean(session?.activity?.error);
+  if (!needsRead) return;
+
+  try {
+    await api("/api/activity/read", {
+      method: "POST",
+      body: JSON.stringify({ node: node.name, sessionID: sessionId }),
+    });
+  } catch {}
+}
+
+function connectActivityEvents() {
+  if (!("EventSource" in window)) return;
+  const source = new EventSource("/api/events");
+  source.onopen = () => scheduleActivityRefresh(1500);
+  source.onmessage = () => {
+    scheduleActivityRefresh(900);
+    scheduleInboxRefresh();
+  };
 }
 
 function scheduleTreeRefresh() {
@@ -1874,6 +2527,7 @@ function bindEvents() {
   });
 
   els.frame.addEventListener("load", () => {
+    if (els.frame.src === "about:blank") return;
     state.frameBooted = true;
     if (!els.frame.hidden) hideFrameLoading();
     try {
@@ -1906,6 +2560,7 @@ function bindEvents() {
   });
 
   els.themeToggle.addEventListener("click", toggleTheme);
+  els.sidebarToggle?.addEventListener("click", toggleSidebar);
   els.settingsButton.addEventListener("click", openSettings);
   els.settingsClose.addEventListener("click", closeSettings);
   els.settingsTheme.addEventListener("click", toggleTheme);
@@ -1923,6 +2578,13 @@ function bindEvents() {
   els.settingsDialog.addEventListener("click", (event) => {
     if (event.target === els.settingsDialog) closeSettings();
   });
+
+  els.inboxButton.addEventListener("click", () => {
+    if (state.inboxOpen) closeInbox();
+    else openInbox();
+  });
+  els.inboxBack.addEventListener("click", closeInbox);
+  els.inboxRefresh.addEventListener("click", fetchInbox);
 
   window.addEventListener("hashchange", () => {
     const hit = readHash();
@@ -1965,6 +2627,10 @@ function bindEvents() {
       (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
 
     if (event.key === "Escape") {
+      if (state.inboxOpen) {
+        closeInbox();
+        return;
+      }
       if (!els.settingsDialog.hidden) {
         closeSettings();
         return;
@@ -2003,6 +2669,10 @@ function bindEvents() {
 async function init() {
   applyTheme(localStorage.getItem("agenthub.theme") || "dark");
   if (!["oc", "host", "project", "git", "sessions"].includes(state.activePanel)) state.activePanel = "oc";
+  if (state.lastSidebarNarrow) {
+    state.sidebarCollapsed = true;
+    state.sidebarAuto = true;
+  }
   applySidebarState();
   initResizer();
   bindEvents();
@@ -2016,6 +2686,7 @@ async function init() {
   await loadTree();
   await loadFavorites();
   renderPanels();
+  connectActivityEvents();
   scheduleTreeRefresh();
   setInterval(() => {
     if (document.visibilityState === "visible") refreshSelected();

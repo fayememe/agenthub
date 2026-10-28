@@ -8,6 +8,7 @@ agenthub is a **LAN / single-user** tool that assumes trusted users on the netwo
 - `8671–8679` proxy each node's opencode Web UI; the hub injects the node's Basic Auth server-side, so **access to the hub is equivalent to access to those nodes**.
 - Embedded opencode can read and write project files and execute commands/tools. Exposing opencode through agenthub exposes those capabilities to any browser that can reach the hub.
 - MCP (`8680`) is read-only but is still a data egress path; it has only a bearer token by default and no OAuth authorization page.
+- Skillcell reads session excerpts and sends redacted evidence to the configured executor model on an opencode node. The executor node and model provider are part of your trust boundary.
 - Config may contain node addresses, usernames, and `password_env` names; real passwords live in `~/.config/agenthub/env`.
 
 ## Minimum hardening

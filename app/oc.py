@@ -101,6 +101,7 @@ class OcClient:
         self.session = aiohttp.ClientSession()
         self._index_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
         self._index_locks: dict[str, asyncio.Lock] = {}
+        self.activity: Any = None
 
     async def close(self) -> None:
         await self.session.close()
@@ -126,6 +127,30 @@ class OcClient:
 
     async def _get(self, node: NodeConfig, path: str, params: dict[str, Any] | None = None) -> Any:
         return await self._get_url(node, node.api_url, path, params)
+
+    async def _post_url(
+        self,
+        node: NodeConfig,
+        base: str,
+        path: str,
+        body: dict[str, Any] | None = None,
+        timeout: aiohttp.ClientTimeout | None = None,
+    ) -> Any:
+        request_timeout = timeout or aiohttp.ClientTimeout(total=self.config.request_timeout_s)
+        async with self.session.post(
+            base + path,
+            json=body,
+            headers={"Authorization": node.auth_header},
+            timeout=request_timeout,
+        ) as response:
+            if response.status == 401:
+                raise PermissionError("unauthorized")
+            if response.status >= 400:
+                text = await response.text()
+                raise RuntimeError(f"http {response.status}: {text[:200]}")
+            if "json" in (response.content_type or ""):
+                return await response.json(content_type=None)
+            return await response.text()
 
     async def _get_web(self, node: NodeConfig, path: str, params: dict[str, Any] | None = None) -> Any:
         return await self._get_url(node, node.web_url, path, params)
@@ -279,7 +304,10 @@ class OcClient:
             "updated_at": int(time.time() * 1000),
         }
 
-    async def session_index(self, node: NodeConfig, max_age: float = 8.0, limit: int = 5000) -> list[dict[str, Any]]:
+    def invalidate_session_index(self, node_name: str) -> None:
+        self._index_cache.pop(node_name, None)
+
+    async def session_index(self, node: NodeConfig, max_age: float = 15.0, limit: int = 5000) -> list[dict[str, Any]]:
         now = time.monotonic()
         cached = self._index_cache.get(node.name)
         if cached and now - cached[0] < max_age:
@@ -529,10 +557,21 @@ class OcClient:
             project["kind"] = "project"
             project["session_count"] = 0
             project["last_session"] = 0
+            project["busy_sessions"] = 0
+            project["done_sessions"] = 0
+            project["error_sessions"] = 0
+            project["pending_permissions"] = 0
+            project["pending_questions"] = 0
+            project["attention"] = "idle"
 
         other_dirs: set[str] = set()
         other_count = 0
         other_last = 0
+        other_busy = 0
+        other_done = 0
+        other_error = 0
+        other_permissions = 0
+        other_questions = 0
         for session in index:
             directory = str(session.get("directory") or "")
             project_id = session.get("projectID")
@@ -553,11 +592,31 @@ class OcClient:
                     other_dirs.add(directory)
                     other_count += 1
                     other_last = max(other_last, session.get("updated") or 0)
+                    if self.activity is not None:
+                        activity = self.activity.snapshot(node.name, str(session.get("id") or ""))
+                        if activity.get("busy"):
+                            other_busy += 1
+                        if activity.get("done"):
+                            other_done += 1
+                        if activity.get("error"):
+                            other_error += 1
+                        other_permissions += int(activity.get("permissions") or 0)
+                        other_questions += int(activity.get("questions") or 0)
                 continue
 
             target["session_count"] += 1
             updated = session.get("updated") or 0
             target["last_session"] = max(target["last_session"], updated)
+            if self.activity is not None:
+                activity = self.activity.snapshot(node.name, str(session.get("id") or ""))
+                if activity.get("busy"):
+                    target["busy_sessions"] += 1
+                if activity.get("done"):
+                    target["done_sessions"] += 1
+                if activity.get("error"):
+                    target["error_sessions"] += 1
+                target["pending_permissions"] += int(activity.get("permissions") or 0)
+                target["pending_questions"] += int(activity.get("questions") or 0)
 
         if other_count:
             projects.append(
@@ -572,8 +631,26 @@ class OcClient:
                     "session_count": other_count,
                     "last_session": other_last,
                     "paths": sorted(other_dirs),
+                    "busy_sessions": other_busy,
+                    "done_sessions": other_done,
+                    "error_sessions": other_error,
+                    "pending_permissions": other_permissions,
+                    "pending_questions": other_questions,
+                    "attention": "idle",
                 }
             )
+
+        for project in projects:
+            if project["pending_permissions"]:
+                project["attention"] = "permission"
+            elif project["pending_questions"]:
+                project["attention"] = "question"
+            elif project["error_sessions"]:
+                project["attention"] = "error"
+            elif project["done_sessions"]:
+                project["attention"] = "done"
+            elif project["busy_sessions"]:
+                project["attention"] = "busy"
 
         projects.sort(
             key=lambda item: (

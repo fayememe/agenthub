@@ -108,6 +108,7 @@ async def run() -> dict:
             "--no-sandbox",
             "--disable-gpu",
             "--hide-scrollbars",
+            "--window-size=1600,1000",
             f"--remote-debugging-port={port}",
             f"--user-data-dir={profile}",
             "about:blank",

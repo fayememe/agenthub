@@ -6,14 +6,24 @@
     <title>sah - homelab</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/filepane.css" />
   </head>
   <body>
     <header id="topbar">
+      <button id="sidebar-toggle" class="icon-button" title="Hide sidebar" aria-label="Toggle sidebar">☰</button>
       <div class="brand">
         <span class="brand-prompt">&gt;_</span>
         <span class="brand-word"><span class="brand-soft">soft</span><span class="brand-agent">agent</span><span class="brand-hub">hub</span></span>
       </div>
       <div class="top-meta">
+        <a id="skillcell-button" class="icon-button" href="/skillcell" title="skillcell" aria-label="skillcell">◇</a>
+        <button id="inbox-button" class="icon-button inbox-button" title="Inbox" aria-label="Inbox">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M3 12h10l-1.2-1.8V7a3.8 3.8 0 0 0-7.6 0v3.2L3 12Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />
+            <path d="M6.5 13.5a1.5 1.5 0 0 0 3 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+          </svg>
+          <span id="inbox-count" class="inbox-count" hidden>0</span>
+        </button>
         <span class="user-name" id="hub-name"></span>
         <button id="theme-toggle" class="icon-button" title="Toggle theme" aria-label="Toggle theme">☀</button>
         <button id="settings-button" class="icon-button" title="Settings" aria-label="Settings">⚙</button>
@@ -44,6 +54,7 @@
             <button class="panel-tab" data-panel="sessions">Sessions <span id="tab-session-count" class="tab-badge" hidden></span></button>
           </div>
           <div class="panel-actions">
+            <button id="files-toggle" class="icon-button small" title="Files" aria-label="Files" disabled>▤</button>
             <button id="new-session" class="icon-button small" title="New session" aria-label="New session" disabled>+</button>
             <button id="copy-link" class="icon-button small" title="Copy link" aria-label="Copy link" disabled>⧉</button>
             <button id="reload-frame" class="icon-button small" title="Reload (r)" aria-label="Reload" disabled>↻</button>
@@ -116,7 +127,34 @@
             </div>
             <div id="sessions-list" class="panel-body"></div>
           </section>
+
+          <div id="filepane-resizer" hidden></div>
+          <aside id="filepane" hidden aria-label="Project files">
+            <div class="filepane-head">
+              <span id="filepane-title" class="filepane-title">File pane</span>
+              <span id="filepane-meta" class="filepane-meta"></span>
+              <span class="filepane-head-spacer"></span>
+              <button id="filepane-tree-toggle" class="icon-button small" title="Hide file tree" aria-label="Toggle file tree">▥</button>
+              <button id="filepane-refresh" class="icon-button small" title="Refresh files" aria-label="Refresh files">↻</button>
+              <button id="filepane-close" class="icon-button small" title="Close files" aria-label="Close files">×</button>
+            </div>
+            <div id="filepane-tabs" class="filepane-tabs"></div>
+            <div id="filepane-body" class="filepane-body"></div>
+          </aside>
         </div>
+
+        <section id="inbox-view" class="inbox-view" hidden>
+          <div class="inbox-head">
+            <button id="inbox-back" class="icon-button small" title="Back" aria-label="Back">←</button>
+            <span class="inbox-title">Inbox</span>
+            <span id="inbox-summary" class="panel-head-meta"></span>
+            <button id="inbox-refresh" class="icon-button small" title="Refresh" aria-label="Refresh">↻</button>
+          </div>
+          <div class="inbox-body">
+            <div id="inbox-list" class="inbox-list"></div>
+            <div id="inbox-detail" class="inbox-detail"></div>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -162,6 +200,7 @@
       </div>
     </div>
 
+    <script src="/static/filepane.js"></script>
     <script src="/static/app.js"></script>
   </body>
 </html>

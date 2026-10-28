@@ -50,13 +50,14 @@ def _project_dir_from_path(path: str) -> str | None:
     return value if value.startswith("/") else None
 
 
-def _bootstrap_js(current: str | None, paths: list[str], fetched: bool) -> str:
+def _bootstrap_js(current: str | None, paths: list[str], fetched: bool, drop: list[str]) -> str:
     return f"""
 (() => {{
   try {{
     const key = "opencode.global.dat:server";
     const current = {json.dumps(current)};
     const paths = {json.dumps(paths)};
+    const drop = new Set({json.dumps(drop)});
     const fetched = {json.dumps(fetched)};
     let state = {{}};
     try {{ state = JSON.parse(localStorage.getItem(key) || "{{}}") || {{}}; }} catch (error) {{}}
@@ -66,7 +67,13 @@ def _bootstrap_js(current: str | None, paths: list[str], fetched: bool) -> str:
     const existing = Array.isArray(projects.local) ? projects.local : [];
     if (fetched) {{
       const expanded = new Map(existing.map((item) => [item && item.worktree, !!(item && item.expanded)]));
-      projects.local = paths.map((path) => ({{ worktree: path, expanded: current ? path === current : (expanded.get(path) || false) }}));
+      const merged = paths.map((path) => ({{ worktree: path, expanded: current ? path === current : (expanded.get(path) || false) }}));
+      const known = new Set(paths);
+      for (const item of existing) {{
+        if (!item || !item.worktree || known.has(item.worktree) || drop.has(item.worktree)) continue;
+        merged.push(item);
+      }}
+      projects.local = merged;
     }}
     state.list = Array.isArray(state.list) ? state.list : [];
     state.projects = projects;
@@ -192,22 +199,18 @@ def create_proxy_app(node: NodeConfig, client: aiohttp.ClientSession) -> FastAPI
     base_parts = urlsplit(base)
     upstream_host = base_parts.netloc
     ws_scheme = "wss" if base_parts.scheme == "https" else "ws"
-    bootstrap_cache: dict[str, object] = {"at": 0.0, "paths": [], "fetched": False}
-    project_path_cache: dict[str, tuple[float, str]] = {}
+    bootstrap_cache: dict[str, object] = {"at": 0.0, "paths": [], "drop": [], "fetched": False}
+    project_dirs_cache: dict[str, tuple[float, list[str]]] = {}
 
-    async def preferred_project_path(item: dict) -> str:
-        path = str(item.get("worktree") or "")
-        sandboxes = [str(value) for value in item.get("sandboxes") or [] if value]
-        project_id = str(item.get("id") or "")
-        if not sandboxes or not project_id:
-            return path
-
+    async def project_directories(project_id: str) -> list[str]:
+        if not project_id:
+            return []
         now = time.monotonic()
-        cached = project_path_cache.get(project_id)
+        cached = project_dirs_cache.get(project_id)
         if cached and now - cached[0] < 60:
             return cached[1]
 
-        preferred = ""
+        directories: list[str] = []
         try:
             timeout = aiohttp.ClientTimeout(total=5)
             async with client.get(
@@ -222,15 +225,23 @@ def create_proxy_app(node: NodeConfig, client: aiohttp.ClientSession) -> FastAPI
                         for entry in data
                         if isinstance(entry, dict) and entry.get("directory")
                     ]
-                    if directories:
-                        preferred = directories[0]
         except Exception:
             pass
 
-        if not preferred:
-            preferred = sandboxes[0] if sandboxes else path
-        project_path_cache[project_id] = (now, preferred)
-        return preferred
+        project_dirs_cache[project_id] = (now, directories)
+        return directories
+
+    async def preferred_project_path(item: dict) -> str:
+        path = str(item.get("worktree") or "")
+        sandboxes = [str(value) for value in item.get("sandboxes") or [] if value]
+        project_id = str(item.get("id") or "")
+        if not sandboxes or not project_id:
+            return path
+
+        directories = await project_directories(project_id)
+        if directories:
+            return directories[0]
+        return sandboxes[0] if sandboxes else path
 
     def target_url(path: str, query: str) -> str:
         url = f"{base}/{path}" if path else f"{base}/"
@@ -258,19 +269,36 @@ def create_proxy_app(node: NodeConfig, client: aiohttp.ClientSession) -> FastAPI
                             data = await response.json(content_type=None)
                             if isinstance(data, list):
                                 paths: list[str] = []
+                                drop: set[str] = set()
                                 for item in data:
                                     if not isinstance(item, dict) or item.get("id") == "global":
                                         continue
                                     candidate = await preferred_project_path(item)
-                                    if candidate and candidate != "/":
-                                        paths.append(candidate)
+                                    if not candidate or candidate == "/":
+                                        continue
+                                    paths.append(candidate)
+                                    worktree = str(item.get("worktree") or "")
+                                    if worktree and worktree != candidate:
+                                        drop.add(worktree)
+                                    for directory in await project_directories(str(item.get("id") or "")):
+                                        if directory != candidate:
+                                            drop.add(directory)
+                                    for sandbox in item.get("sandboxes") or []:
+                                        if sandbox and sandbox != candidate:
+                                            drop.add(str(sandbox))
                                 bootstrap_cache["paths"] = paths
+                                bootstrap_cache["drop"] = sorted(drop)
                                 bootstrap_cache["fetched"] = True
                 except Exception:
                     pass
                 bootstrap_cache["at"] = now
             return Response(
-                _bootstrap_js(current, list(bootstrap_cache["paths"]), bool(bootstrap_cache["fetched"])),
+                _bootstrap_js(
+                    current,
+                    list(bootstrap_cache["paths"]),
+                    bool(bootstrap_cache["fetched"]),
+                    list(bootstrap_cache["drop"]),
+                ),
                 media_type="application/javascript",
                 headers={"Cache-Control": "no-store"},
             )
@@ -286,11 +314,21 @@ def create_proxy_app(node: NodeConfig, client: aiohttp.ClientSession) -> FastAPI
             request.headers.get("sec-fetch-dest") == "document"
             or "text/html" in request.headers.get("accept", "")
         )
-        if wants_html or wrap:
+        if (
+            wants_html
+            or wrap
+            or path in {"project", "project/current"}
+            or path.startswith("project/")
+        ):
             headers["accept-encoding"] = "identity"
 
         body = await request.body() if request.method not in {"GET", "HEAD"} else None
-        timeout = aiohttp.ClientTimeout(total=None, sock_connect=15, sock_read=None)
+        streaming = path in {"event", "global/event"} or path.endswith("/event")
+        timeout = aiohttp.ClientTimeout(
+            total=None if streaming else 15,
+            sock_connect=10,
+            sock_read=None if streaming else 15,
+        )
 
         try:
             upstream = await client.request(
@@ -302,6 +340,8 @@ def create_proxy_app(node: NodeConfig, client: aiohttp.ClientSession) -> FastAPI
                 auto_decompress=False,
                 timeout=timeout,
             )
+        except asyncio.TimeoutError:
+            return JSONResponse({"error": "upstream timeout"}, status_code=504)
         except aiohttp.ClientError as exc:
             return JSONResponse({"error": f"upstream error: {exc}"}, status_code=502)
 

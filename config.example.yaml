@@ -11,6 +11,31 @@ state_db: ~/.local/share/agenthub/agenthub.db
 # Optional read-only MCP. Put the token in ~/.config/agenthub/env:
 #   AGENTHUB_MCP_TOKEN=...
 # Public clients such as ChatGPT need an additional OAuth/HTTPS entry point; see README.
+# Optional skillcell audit module. It scans OpenCode sessions through the nodes
+# below and stores proposals in its own SQLite file. Start with auto_scan off.
+skillcell:
+  enabled: false
+  state_db: ~/.local/share/agenthub/skillcell.db
+  skills_root: ~/.config/opencode/skill
+  executor_node: local
+  # Directory on the executor node used for audit sessions; create it there.
+  executor_directory: ~/.local/share/skillcell/workspace
+  source_nodes: [local]
+  exclude: []
+  auto_scan: false
+  interval_s: 3600
+  lookback_days: 7
+  max_sessions: 10
+  max_session_pages: 5
+  message_limit: 50
+  max_evidence: 40
+  min_score: 60
+  max_proposals: 5
+  agent: build
+  # model: deepseek/deepseek-flash
+  reasoner_timeout_s: 300
+  request_timeout_s: 30
+
 mcp:
   host: 127.0.0.1
   port: 8680

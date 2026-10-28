@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>skillcell</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <script>
+      (() => {
+        const key = "agenthub.theme";
+        const apply = () => {
+          let theme = "dark";
+          try {
+            theme = localStorage.getItem(key) === "light" ? "light" : "dark";
+          } catch (error) {}
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        };
+        apply();
+        window.addEventListener("storage", (event) => {
+          if (event.key === key) apply();
+        });
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1017;
+        --panel: #11151f;
+        --panel-2: #171c28;
+        --text: #d7deeb;
+        --muted: #8792a8;
+        --line: #252d3d;
+        --accent: #7aa2f7;
+        --accent-2: rgba(122, 162, 247, 0.14);
+        --warn: #e0af68;
+        --danger: #f7768e;
+        --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      [data-theme="light"] {
+        color-scheme: light;
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --panel-2: #eef1f6;
+        --text: #1f2937;
+        --muted: #5a6577;
+        --line: #d9dfe8;
+        --accent: #3666c9;
+        --accent-2: rgba(54, 102, 201, 0.12);
+        --warn: #aa6f1a;
+        --danger: #c84343;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.5 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+      header h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+      header .meta { color: var(--muted); font-size: 12px; }
+      header .spacer { flex: 1; }
+      a { color: var(--accent); text-decoration: none; }
+      button {
+        font: inherit;
+        color: var(--text);
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 6px 11px;
+        cursor: pointer;
+      }
+      button:hover { border-color: var(--accent); }
+      button:disabled { opacity: .45; cursor: default; }
+      button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+      button.danger { color: var(--danger); }
+      main { padding: 18px; max-width: 1280px; margin: 0 auto; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 12px 14px; }
+      .card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+      .card .value { font-size: 23px; font-weight: 650; margin-top: 2px; }
+      .section { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 14px; margin-bottom: 14px; }
+      .section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+      .section-head h2 { font-size: 14px; margin: 0; }
+      .section-head .spacer { flex: 1; }
+      .sources { display: flex; flex-wrap: wrap; gap: 8px; }
+      .source { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel-2); display: flex; align-items: center; gap: 10px; }
+      .source .sid { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+      .focus-input {
+        flex: 1;
+        min-width: 220px;
+        max-width: 560px;
+        font: inherit;
+        color: var(--text);
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 6px 10px;
+      }
+      .layout { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 14px; align-items: start; }
+      @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+      .list { display: flex; flex-direction: column; gap: 6px; }
+      .proposal {
+        width: 100%;
+        text-align: left;
+        background: var(--panel-2);
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px;
+        cursor: pointer;
+      }
+      .proposal.active { border-color: var(--accent); background: var(--accent-2); }
+      .proposal .title { font-weight: 600; }
+      .proposal .row { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; margin-top: 4px; flex-wrap: wrap; }
+      .pill { border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--muted); }
+      .pill.score { color: var(--accent); border-color: var(--accent); }
+      .detail { min-height: 120px; }
+      .detail h3 { margin: 0 0 4px; font-size: 20px; }
+      .detail .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+      .detail .block { margin: 12px 0; }
+      .detail .block-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+      .detail ul { margin: 4px 0 0 18px; padding: 0; }
+      .detail pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 9px;
+        font: 12px/1.45 var(--mono);
+        max-height: 340px;
+        overflow: auto;
+      }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+      .empty { color: var(--muted); padding: 16px 0; }
+      .chat-messages {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 360px;
+        overflow: auto;
+        padding: 8px 0;
+      }
+      .chat-msg {
+        max-width: 85%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px 11px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .chat-msg.user { align-self: flex-end; background: var(--accent-2); }
+      .chat-msg.assistant { align-self: flex-start; background: var(--panel-2); }
+      .chat-msg.pending { color: var(--muted); font-style: italic; }
+      .chat-msg .role {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+        margin-bottom: 3px;
+      }
+      .chat-form { display: flex; gap: 8px; align-items: flex-end; }
+      .chat-form textarea {
+        flex: 1;
+        resize: vertical;
+        min-height: 54px;
+        font: inherit;
+        color: var(--text);
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+      }
+      .job { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-top: 1px solid var(--line); font-size: 12px; }
+      .job:first-child { border-top: 0; }
+      .job .jid { font-family: var(--mono); color: var(--muted); }
+      .job .err { color: var(--danger); }
+      .status-error { color: var(--danger); white-space: pre-wrap; }
+      .muted { color: var(--muted); }
+      .toast { position: fixed; right: 18px; bottom: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; box-shadow: 0 8px 30px rgba(0,0,0,.18); max-width: 420px; }
+      .toast.error { border-color: var(--danger); color: var(--danger); }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a href="/">← hub</a>
+      <h1>skillcell</h1>
+      <span class="meta" id="summary">loading…</span>
+      <span class="spacer"></span>
+      <button id="refresh">Refresh</button>
+      <button id="scan-all" class="primary">Scan all</button>
+    </header>
+    <main>
+      <div id="disabled" class="section hidden"></div>
+      <div id="app">
+        <div class="cards">
+          <div class="card"><div class="label">Proposals</div><div class="value" id="count-proposals">0</div></div>
+          <div class="card"><div class="label">Observed</div><div class="value" id="count-observed">0</div></div>
+          <div class="card"><div class="label">Candidates</div><div class="value" id="count-candidate">0</div></div>
+          <div class="card"><div class="label">Sources</div><div class="value" id="count-sources">0</div></div>
+          <div class="card"><div class="label">Running jobs</div><div class="value" id="count-jobs">0</div></div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h2>Sources</h2>
+            <input id="focus-input" class="focus-input" type="text" placeholder="Focus (optional): e.g. release hardening, safe git merge…" spellcheck="false" />
+            <span class="spacer"></span>
+            <span class="muted" id="source-errors"></span>
+          </div>
+          <div id="sources" class="sources"></div>
+        </div>
+
+        <div class="layout">
+          <div class="section">
+            <div class="section-head"><h2>Inbox</h2><span class="spacer"></span><span class="muted" id="inbox-count"></span></div>
+            <div id="proposals" class="list"></div>
+          </div>
+          <div class="section">
+            <div class="section-head"><h2>Proposal</h2><span class="spacer"></span><span class="muted" id="detail-id"></span></div>
+            <div id="detail" class="detail"><div class="empty">Select a proposal.</div></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h2>Ask skillcell</h2>
+            <span class="muted" id="chat-context">No proposal selected</span>
+            <span class="spacer"></span>
+            <button id="chat-reset">New chat</button>
+          </div>
+          <div id="chat-messages" class="chat-messages"></div>
+          <form id="chat-form" class="chat-form">
+            <textarea id="chat-input" rows="3" placeholder="Ask about this proposal, evidence, quality, or next steps…"></textarea>
+            <button type="submit" id="chat-send" class="primary">Send</button>
+          </form>
+        </div>
+
+        <div class="section">
+          <div class="section-head"><h2>Recent jobs</h2></div>
+          <div id="jobs"></div>
+        </div>
+      </div>
+    </main>
+    <div id="toast" class="toast hidden"></div>
+    <script>
+      const state = {
+        status: null,
+        proposals: [],
+        selected: null,
+        detail: null,
+        busy: false,
+        poll: null,
+        chat: { messages: [], loading: false },
+      };
+      const $ = (id) => document.getElementById(id);
+      const ACTIVE = new Set(["queued", "collecting", "analyzing", "partial"]);
+
+      function el(tag, attrs = {}, children = []) {
+        const node = document.createElement(tag);
+        for (const [key, value] of Object.entries(attrs)) {
+          if (value === null || value === undefined || value === false) continue;
+          if (key === "class") node.className = value;
+          else if (key === "text") node.textContent = value;
+          else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+          else node.setAttribute(key, value);
+        }
+        for (const child of children) {
+          if (child === null || child === undefined) continue;
+          node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+        }
+        return node;
+      }
+
+      function fmtTime(value) {
+        if (!value) return "";
+        try { return new Date(value).toLocaleString(); } catch (error) { return ""; }
+      }
+
+      function toast(message, isError = false) {
+        const node = $("toast");
+        node.textContent = message;
+        node.className = "toast" + (isError ? " error" : "");
+        clearTimeout(toast.timer);
+        toast.timer = setTimeout(() => node.classList.add("hidden"), isError ? 7000 : 3500);
+      }
+
+      async function api(path, options = {}) {
+        const response = await fetch(path, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.detail || response.statusText || `HTTP ${response.status}`);
+        }
+        return data;
+      }
+
+      async function loadStatus() {
+        const status = await api("/api/skillcell/status");
+        state.status = status;
+        if (!status.enabled) {
+          $("app").classList.add("hidden");
+          $("disabled").classList.remove("hidden");
+          $("disabled").replaceChildren(
+            el("h2", { text: "skillcell is not enabled" }),
+            el("p", { class: "muted", text: "Add a skillcell section to config.yaml and restart agenthub." }),
+            status.error ? el("pre", { class: "status-error", text: status.error }) : null
+          );
+          $("summary").textContent = "disabled";
+          $("scan-all").disabled = true;
+          return;
+        }
+        $("disabled").classList.add("hidden");
+        $("app").classList.remove("hidden");
+        $("summary").textContent = `${status.executorNode} · ${status.autoScan ? "auto " + status.intervalSeconds + "s" : "manual"}`;
+        $("count-proposals").textContent = status.proposalTotal ?? 0;
+        $("count-observed").textContent = status.counts?.observed ?? 0;
+        $("count-candidate").textContent = status.counts?.candidate ?? 0;
+        $("count-sources").textContent = status.sources?.length ?? 0;
+        $("count-jobs").textContent = (status.jobs || []).filter((job) => ACTIVE.has(job.status)).length;
+        renderSources();
+        renderJobs();
+      }
+
+      function renderSources() {
+        const wrap = $("sources");
+        wrap.replaceChildren();
+        const sources = state.status?.sources || [];
+        if (!sources.length) {
+          wrap.append(el("div", { class: "empty", text: "No sources discovered." }));
+        }
+        for (const source of sources) {
+          wrap.append(
+            el("div", { class: "source" }, [
+              el("div", {}, [
+                el("div", { text: source.directory || source.sourceID }),
+                el("div", { class: "sid", text: source.sourceID }),
+              ]),
+              el("button", {
+                text: "Scan",
+                onclick: () => scan(source.sourceID),
+                disabled: state.busy ? "disabled" : null,
+              }),
+            ])
+          );
+        }
+        const errors = Object.entries(state.status?.sourceErrors || {});
+        $("source-errors").textContent = errors.map(([node, error]) => `${node}: ${error}`).join(" · ");
+      }
+
+      async function loadProposals() {
+        const data = await api("/api/skillcell/proposals?limit=500");
+        state.proposals = data.items || [];
+        renderProposals();
+      }
+
+      function renderProposals() {
+        const wrap = $("proposals");
+        wrap.replaceChildren();
+        $("inbox-count").textContent = `${state.proposals.length} item${state.proposals.length === 1 ? "" : "s"}`;
+        if (!state.proposals.length) {
+          wrap.append(el("div", { class: "empty", text: "No proposals yet. Scan a source." }));
+          return;
+        }
+        for (const item of state.proposals) {
+          const row = el("button", {
+            class: "proposal" + (state.selected === item.id ? " active" : ""),
+            onclick: () => openProposal(item.id),
+          }, [
+            el("div", { class: "title", text: item.title }),
+            el("div", { class: "row" }, [
+              el("span", { class: "pill score", text: String(item.score) }),
+              el("span", { class: "pill", text: item.type }),
+              el("span", { class: "pill", text: item.status }),
+              el("span", { text: `${item.evidenceCount} evidence` }),
+            ]),
+          ]);
+          wrap.append(row);
+        }
+      }
+
+      async function openProposal(id) {
+        state.selected = id;
+        renderProposals();
+        try {
+          state.detail = await api(`/api/skillcell/proposals/${encodeURIComponent(id)}`);
+          renderDetail();
+          updateChatContext();
+        } catch (error) {
+          toast(error.message, true);
+        }
+      }
+
+      function bullets(label, values) {
+        if (!values || !values.length) return null;
+        return el("div", { class: "block" }, [
+          el("div", { class: "block-label", text: label }),
+          el("ul", {}, values.map((value) => el("li", { text: value }))),
+        ]);
+      }
+
+      function renderDetail() {
+        const item = state.detail;
+        if (!item) return;
+        $("detail-id").textContent = item.id;
+        const actions = [];
+        if (item.status === "observed") {
+          actions.push(el("button", { class: "primary", text: "Promote", onclick: () => review("promote") }));
+        }
+        if (!["rejected", "published", "deprecated"].includes(item.status)) {
+          actions.push(el("button", { text: "Defer", onclick: () => review("defer") }));
+          actions.push(el("button", { class: "danger", text: "Reject", onclick: () => review("reject") }));
+        }
+        if (["rejected", "deferred", "deprecated"].includes(item.status)) {
+          actions.push(el("button", { text: "Reopen", onclick: () => review("reopen") }));
+        }
+        const evidence = (item.evidence || []).map((evidence) =>
+          el("div", { class: "block" }, [
+            el("div", { class: "block-label", text: `${evidence.kind} · ${evidence.id}` }),
+            el("pre", { text: evidence.excerpt }),
+          ])
+        );
+        const reviews = (item.reviews || []).map((review) =>
+          el("div", { class: "job" }, [
+            el("span", { text: review.decision }),
+            el("span", { class: "muted", text: review.reviewer }),
+            el("span", { class: "muted", text: fmtTime(review.createdAt) }),
+            review.rationale ? el("span", { text: review.rationale }) : null,
+          ])
+        );
+        $("detail").replaceChildren(
+          el("h3", { text: item.title }),
+          el("div", { class: "sub" }, [
+            `${item.type} · ${item.scope} · score ${item.score} · ${item.status}`,
+            item.existingSkill ? ` · improves ${item.existingSkill}` : "",
+          ]),
+          item.summary ? el("div", { class: "block" }, [
+            el("div", { class: "block-label", text: "Value" }),
+            el("div", { text: item.summary }),
+          ]) : null,
+          item.problem ? el("div", { class: "block" }, [
+            el("div", { class: "block-label", text: "Problem" }),
+            el("div", { text: item.problem }),
+          ]) : null,
+          bullets("Triggers", item.triggers),
+          bullets("Exclusions", item.exclusions),
+          evidence.length ? el("div", { class: "block" }, [
+            el("div", { class: "block-label", text: "Evidence" }),
+            ...evidence,
+          ]) : null,
+          reviews.length ? el("div", { class: "block" }, [
+            el("div", { class: "block-label", text: "Reviews" }),
+            ...reviews,
+          ]) : null,
+          el("div", { class: "actions" }, actions)
+        );
+      }
+
+      async function review(decision) {
+        if (!state.detail || state.busy) return;
+        state.busy = true;
+        try {
+          await api(`/api/skillcell/proposals/${encodeURIComponent(state.detail.id)}/review`, {
+            method: "POST",
+            body: JSON.stringify({ decision }),
+          });
+          toast(`Proposal ${decision}.`);
+          await Promise.all([loadStatus(), loadProposals()]);
+          await openProposal(state.selected);
+        } catch (error) {
+          toast(error.message, true);
+        } finally {
+          state.busy = false;
+        }
+      }
+
+      async function scan(sourceID) {
+        if (state.busy) return;
+        state.busy = true;
+        $("scan-all").disabled = true;
+        try {
+          const focus = $("focus-input").value.trim();
+          const body = sourceID ? { sourceID } : {};
+          if (focus) body.focus = focus;
+          const data = await api("/api/skillcell/scan", {
+            method: "POST",
+            body: JSON.stringify(body),
+          });
+          const count = (data.jobs || []).length;
+          toast(count ? `Scan queued (${count} job${count === 1 ? "" : "s"}).` : "Nothing to scan.");
+          pollJobs();
+          await loadStatus();
+        } catch (error) {
+          toast(error.message, true);
+          state.busy = false;
+        } finally {
+          $("scan-all").disabled = false;
+          if (!state.poll) state.busy = false;
+        }
+      }
+
+      function pollJobs() {
+        if (state.poll) return;
+        const started = Date.now();
+        state.poll = setInterval(async () => {
+          try {
+            await loadStatus();
+            const active = (state.status?.jobs || []).some((job) => ACTIVE.has(job.status));
+            if (!active || Date.now() - started > 120000) {
+              clearInterval(state.poll);
+              state.poll = null;
+              state.busy = false;
+              await loadProposals();
+            }
+          } catch (error) {
+            clearInterval(state.poll);
+            state.poll = null;
+            state.busy = false;
+            toast(error.message, true);
+          }
+        }, 2000);
+      }
+
+      function renderJobs() {
+        const wrap = $("jobs");
+        wrap.replaceChildren();
+        const jobs = state.status?.jobs || [];
+        if (!jobs.length) {
+          wrap.append(el("div", { class: "empty", text: "No jobs yet." }));
+          return;
+        }
+        for (const job of jobs) {
+          wrap.append(
+            el("div", { class: "job" }, [
+              el("span", { class: "jid", text: job.id }),
+              el("span", { text: job.status }),
+              el("span", { class: "muted", text: job.sourceID }),
+              job.attempts ? el("span", { class: "muted", text: `attempt ${job.attempts}` }) : null,
+              job.focus ? el("span", { class: "muted", text: `focus: ${job.focus.slice(0, 60)}` }) : null,
+              job.error ? el("span", { class: "err", text: job.error }) : null,
+              el("span", { class: "spacer muted", text: fmtTime(job.updatedAt) }),
+            ])
+          );
+        }
+      }
+
+      async function load() {
+        try {
+          await loadStatus();
+          if (state.status?.enabled) {
+            await loadProposals();
+            if (state.selected) await openProposal(state.selected);
+            await loadChat();
+          }
+        } catch (error) {
+          toast(error.message, true);
+        }
+      }
+
+      function updateChatContext() {
+        const label = $("chat-context");
+        if (!label) return;
+        if (state.detail) {
+          label.textContent = `Context: ${state.detail.title}`;
+        } else {
+          label.textContent = "No proposal selected";
+        }
+      }
+
+      function renderChat() {
+        const wrap = $("chat-messages");
+        wrap.replaceChildren();
+        if (!state.chat.messages.length) {
+          wrap.append(el("div", { class: "empty", text: "Ask about a proposal, evidence quality, duplicates, or what to do next." }));
+          return;
+        }
+        for (const message of state.chat.messages) {
+          wrap.append(
+            el("div", { class: `chat-msg ${message.role}${message.pending ? " pending" : ""}` }, [
+              el("span", { class: "role", text: message.role }),
+              message.text,
+            ])
+          );
+        }
+        wrap.scrollTop = wrap.scrollHeight;
+      }
+
+      async function loadChat() {
+        try {
+          const data = await api("/api/skillcell/chat/history?limit=60");
+          state.chat.messages = data.items || [];
+          renderChat();
+        } catch (error) {
+          toast(error.message, true);
+        }
+      }
+
+      async function sendChat() {
+        const input = $("chat-input");
+        const message = input.value.trim();
+        if (!message || state.chat.loading) return;
+        input.value = "";
+        state.chat.messages.push({ role: "user", text: message });
+        state.chat.messages.push({ role: "assistant", text: "Thinking…", pending: true });
+        state.chat.loading = true;
+        $("chat-send").disabled = true;
+        renderChat();
+        try {
+          const data = await api("/api/skillcell/chat", {
+            method: "POST",
+            body: JSON.stringify({
+              message,
+              proposalID: state.selected || null,
+            }),
+          });
+          state.chat.messages.pop();
+          state.chat.messages.push({ role: "assistant", text: data.text });
+        } catch (error) {
+          state.chat.messages.pop();
+          toast(error.message, true);
+        } finally {
+          state.chat.loading = false;
+          $("chat-send").disabled = false;
+          renderChat();
+          input.focus();
+        }
+      }
+
+      async function resetChat() {
+        if (state.chat.loading) return;
+        try {
+          await api("/api/skillcell/chat/reset", { method: "POST" });
+          state.chat.messages = [];
+          renderChat();
+          toast("Started a new chat session.");
+        } catch (error) {
+          toast(error.message, true);
+        }
+      }
+
+      $("chat-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        sendChat();
+      });
+      $("chat-input").addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          sendChat();
+        }
+      });
+      $("chat-reset").addEventListener("click", resetChat);
+
+      $("refresh").addEventListener("click", load);
+      $("scan-all").addEventListener("click", () => scan());
+      load();
+    </script>
+  </body>
+</html>
