@@ -6,9 +6,9 @@
 一个单操作者视角的 Web 驾驶舱，把散落在多台机器上的 opencode 收拢成一张清晰、可控的工作面。</p>
 
 <p align="center">
-  <a href="README.md">English</a> · 简体中文 ·
-  <a href="docs/pr.md">设计笔记</a> ·
-  <a href="docs/security.md">安全边界</a>
+  <a href="https://git.softkitty.me/faye/agenthub/src/branch/main/README.md">English</a> · 简体中文 ·
+  <a href="https://git.softkitty.me/faye/agenthub/src/branch/main/docs/pr.md">设计笔记</a> ·
+  <a href="https://git.softkitty.me/faye/agenthub/src/branch/main/docs/security.md">安全边界</a>
 </p>
 
 ![softagenthub 演示环境](docs/snap-overview.png)
