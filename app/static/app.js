@@ -1140,6 +1140,7 @@ async function toggleFavorite(node, project) {
       const params = new URLSearchParams({ node: node.name, path: project.path });
       await api(`/api/favorites?${params}`, { method: "DELETE" });
     }
+    await loadTree(true);
   } catch (error) {
     if (adding) state.favorites.delete(key);
     else state.favorites.add(key);
