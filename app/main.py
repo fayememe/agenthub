@@ -33,8 +33,10 @@ def asset_version() -> str:
     files = [
         STATIC_DIR / "style.css",
         STATIC_DIR / "filepane.css",
+        STATIC_DIR / "terminal.css",
         STATIC_DIR / "app.js",
         STATIC_DIR / "filepane.js",
+        STATIC_DIR / "terminal.js",
         STATIC_DIR / "index.html",
     ]
     return str(int(max(path.stat().st_mtime for path in files)))
@@ -195,8 +197,10 @@ async def index() -> HTMLResponse:
     )
     html = html.replace("/static/style.css", f"/static/style.css?v={version}")
     html = html.replace("/static/filepane.css", f"/static/filepane.css?v={version}")
+    html = html.replace("/static/terminal.css", f"/static/terminal.css?v={version}")
     html = html.replace("/static/app.js", f"/static/app.js?v={version}")
     html = html.replace("/static/filepane.js", f"/static/filepane.js?v={version}")
+    html = html.replace("/static/terminal.js", f"/static/terminal.js?v={version}")
     return HTMLResponse(html)
 
 
@@ -440,18 +444,6 @@ def _project_for_session(tree_node: dict[str, Any], session: dict[str, Any]) -> 
     project = next((item for item in projects if item.get("id") == project_id), None)
     if project:
         return project
-    if directory:
-        containing = [
-            item
-            for item in projects
-            if item.get("kind") != "other"
-            and (
-                directory == item.get("path")
-                or directory.startswith(str(item.get("path", "")).rstrip("/") + "/")
-            )
-        ]
-        if containing:
-            return max(containing, key=lambda item: len(str(item.get("path") or "")))
     return next((item for item in projects if item.get("kind") == "other"), None)
 
 

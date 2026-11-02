@@ -87,6 +87,15 @@ class FakeOC(BaseHTTPRequestHandler):
                             "time": {"created": 3, "updated": 4},
                             "location": {"directory": "/work/other"},
                         },
+                        {
+                            "id": "ses_sub",
+                            "projectID": "global",
+                            "title": "Subdir session",
+                            "agent": "build",
+                            "model": {"providerID": "fake", "id": "model"},
+                            "time": {"created": 1, "updated": 1},
+                            "location": {"directory": PROJECT + "/sub"},
+                        },
                     ]
                 }
             )
@@ -207,7 +216,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(node["projects"][0]["session_count"], 1)
         self.assertEqual(node["projects"][1]["path"], "__other__")
         self.assertEqual(node["projects"][1]["kind"], "other")
-        self.assertEqual(node["projects"][1]["paths"], ["/work/other"])
+        self.assertEqual(node["projects"][1]["paths"], ["/work/demo/sub", "/work/other"])
 
     def test_sessions_and_status(self):
         with self._client() as client:
@@ -217,6 +226,7 @@ class ApiTests(unittest.TestCase):
 
             other = client.get("/api/sessions", params={"node": "fake", "directory": "__other__"}).json()
             self.assertEqual(other["sessions"][0]["title"], "Other session")
+            self.assertIn("Subdir session", [item["title"] for item in other["sessions"]])
 
             status = client.get("/api/project-status", params={"node": "fake", "directory": PROJECT}).json()
             self.assertEqual(status["changes"]["files"], 1)
@@ -359,6 +369,12 @@ class ApiTests(unittest.TestCase):
             script = client.get("/static/app.js")
             self.assertEqual(script.status_code, 200)
             self.assertIn("openProject", script.text)
+            self.assertIn('data-panel="terminal"', index.text)
+            terminal = client.get("/static/terminal.js")
+            self.assertEqual(terminal.status_code, 200)
+            self.assertIn("agenthubTerminal", terminal.text)
+            xterm = client.get("/static/vendor/xterm.js")
+            self.assertEqual(xterm.status_code, 200)
 
 
 if __name__ == "__main__":

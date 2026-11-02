@@ -577,16 +577,6 @@ class OcClient:
             project_id = session.get("projectID")
             target = by_id.get(str(project_id)) if project_id else None
 
-            if target is None and directory:
-                containing = [
-                    project
-                    for project in projects
-                    if directory == project["path"]
-                    or directory.startswith(project["path"].rstrip("/") + "/")
-                ]
-                if containing:
-                    target = max(containing, key=lambda item: len(item["path"]))
-
             if target is None:
                 if directory:
                     other_dirs.add(directory)
