@@ -85,7 +85,7 @@ class FakeOC(BaseHTTPRequestHandler):
                             "agent": "build",
                             "model": {"providerID": "fake", "id": "model"},
                             "time": {"created": 3, "updated": 4},
-                            "location": {"directory": "/work/other"},
+                            "location": {"directory": "/"},
                         },
                         {
                             "id": "ses_sub",
@@ -211,12 +211,14 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(node["name"], "fake")
         self.assertTrue(node["online"])
         self.assertEqual(node["version"], "fake-1.0")
-        self.assertEqual([project["name"] for project in node["projects"]], ["demo", "Other"])
-        self.assertEqual(node["projects"][0]["path"], PROJECT)
-        self.assertEqual(node["projects"][0]["session_count"], 1)
-        self.assertEqual(node["projects"][1]["path"], "__other__")
-        self.assertEqual(node["projects"][1]["kind"], "other")
-        self.assertEqual(node["projects"][1]["paths"], ["/work/demo/sub", "/work/other"])
+        by_name = {project["name"]: project for project in node["projects"]}
+        self.assertEqual(by_name["demo"]["path"], PROJECT)
+        self.assertEqual(by_name["demo"]["session_count"], 1)
+        self.assertEqual(by_name["sub"]["path"], PROJECT + "/sub")
+        self.assertEqual(by_name["sub"]["session_count"], 1)
+        self.assertEqual(by_name["Other"]["path"], "__other__")
+        self.assertEqual(by_name["Other"]["kind"], "other")
+        self.assertEqual(by_name["Other"]["paths"], ["/"])
 
     def test_sessions_and_status(self):
         with self._client() as client:
@@ -226,7 +228,9 @@ class ApiTests(unittest.TestCase):
 
             other = client.get("/api/sessions", params={"node": "fake", "directory": "__other__"}).json()
             self.assertEqual(other["sessions"][0]["title"], "Other session")
-            self.assertIn("Subdir session", [item["title"] for item in other["sessions"]])
+
+            sub = client.get("/api/sessions", params={"node": "fake", "directory": PROJECT + "/sub"}).json()
+            self.assertEqual(sub["sessions"][0]["title"], "Subdir session")
 
             status = client.get("/api/project-status", params={"node": "fake", "directory": PROJECT}).json()
             self.assertEqual(status["changes"]["files"], 1)

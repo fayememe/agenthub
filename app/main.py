@@ -444,6 +444,18 @@ def _project_for_session(tree_node: dict[str, Any], session: dict[str, Any]) -> 
     project = next((item for item in projects if item.get("id") == project_id), None)
     if project:
         return project
+    if directory:
+        exact = next(
+            (
+                item
+                for item in projects
+                if item.get("path") == directory
+                or directory in (item.get("paths") or [])
+            ),
+            None,
+        )
+        if exact:
+            return exact
     return next((item for item in projects if item.get("kind") == "other"), None)
 
 

@@ -228,14 +228,14 @@ class McpTests(unittest.TestCase):
 
                 projects = await service.list_projects("fake")
                 names = [item["name"] for item in projects["nodes"][0]["projects"]]
-                self.assertEqual(names, ["demo", "Other"])
+                self.assertEqual(names, ["other", "demo"])
 
                 sessions = await service.list_sessions("fake", project=PROJECT)
                 self.assertEqual(sessions["sessions"][0]["title"], "Demo session")
                 self.assertEqual(sessions["sessions"][0]["status"], "busy")
                 self.assertNotIn("share", sessions["sessions"][0])
 
-                other = await service.list_sessions("fake", project="__other__")
+                other = await service.list_sessions("fake", project=OTHER)
                 self.assertEqual(other["sessions"][0]["title"], "Other session")
 
                 project_status = await service.get_project_status("fake", PROJECT)

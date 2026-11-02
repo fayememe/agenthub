@@ -564,6 +564,41 @@ class OcClient:
             project["pending_questions"] = 0
             project["attention"] = "idle"
 
+        by_path = {str(project.get("path")): project for project in projects if project.get("path")}
+        synthetic_projects: dict[str, dict[str, Any]] = {}
+
+        def synthetic_project(directory: str) -> dict[str, Any] | None:
+            directory = directory.rstrip("/") or "/"
+            if directory == "/":
+                return None
+            existing = by_path.get(directory)
+            if existing is not None:
+                return existing
+            project = synthetic_projects.get(directory)
+            if project is not None:
+                return project
+            project = {
+                "id": f"global:{directory}",
+                "path": directory,
+                "paths": [directory],
+                "name": Path(directory).name or directory,
+                "vcs": None,
+                "updated": 0,
+                "b64": b64url(directory),
+                "kind": "project",
+                "session_count": 0,
+                "last_session": 0,
+                "busy_sessions": 0,
+                "done_sessions": 0,
+                "error_sessions": 0,
+                "pending_permissions": 0,
+                "pending_questions": 0,
+                "attention": "idle",
+            }
+            projects.append(project)
+            synthetic_projects[directory] = project
+            return project
+
         other_dirs: set[str] = set()
         other_count = 0
         other_last = 0
@@ -576,6 +611,8 @@ class OcClient:
             directory = str(session.get("directory") or "")
             project_id = session.get("projectID")
             target = by_id.get(str(project_id)) if project_id else None
+            if target is None and directory:
+                target = synthetic_project(directory)
 
             if target is None:
                 if directory:
