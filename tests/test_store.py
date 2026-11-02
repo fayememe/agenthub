@@ -25,6 +25,24 @@ class FavoriteStoreTests(unittest.TestCase):
             self.assertEqual([item["node"] for item in reopened.list()], ["node-b"])
             reopened.close()
 
+    def test_hidden_projects_persist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.db"
+            store = FavoriteStore(path)
+            store.hide("node-a", "/work/old")
+            store.hide("node-a", "/work/old")
+            self.assertEqual(
+                [(item["node"], item["path"]) for item in store.list_hidden()],
+                [("node-a", "/work/old")],
+            )
+            store.close()
+
+            reopened = FavoriteStore(path)
+            self.assertEqual(reopened.list_hidden()[0]["path"], "/work/old")
+            reopened.unhide("node-a", "/work/old")
+            self.assertEqual(reopened.list_hidden(), [])
+            reopened.close()
+
 
 if __name__ == "__main__":
     unittest.main()

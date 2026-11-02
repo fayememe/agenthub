@@ -144,6 +144,7 @@ class ApiTests(unittest.TestCase):
             "hub": {"host": "127.0.0.1", "port": 8670, "proxy_base_port": 8671},
             "refresh_interval_s": 20,
             "request_timeout_s": 2,
+            "hide_stale_days": 0,
             "nodes": [
                 {
                     "name": "fake",
@@ -307,6 +308,33 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(client.get("/api/favorites").json()["keys"], [])
 
             response = client.post("/api/favorites", json={"node": "missing", "path": PROJECT})
+            self.assertEqual(response.status_code, 404)
+
+    def test_hidden_projects(self):
+        with self._client() as client:
+            self.assertEqual(client.get("/api/hidden").json()["keys"], [])
+            tree = client.get("/api/tree", params={"refresh": 1}).json()
+            demo = next(
+                project for project in tree["nodes"][0]["projects"] if project["name"] == "demo"
+            )
+            self.assertFalse(demo["hidden"])
+
+            response = client.post("/api/hidden", json={"node": "fake", "path": PROJECT})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(client.get("/api/hidden").json()["keys"], [f"fake:{PROJECT}"])
+
+            tree = client.get("/api/tree", params={"refresh": 1}).json()
+            demo = next(
+                project for project in tree["nodes"][0]["projects"] if project["name"] == "demo"
+            )
+            self.assertTrue(demo["hidden"])
+            self.assertEqual(demo["hidden_reason"], "manual")
+
+            response = client.delete("/api/hidden", params={"node": "fake", "path": PROJECT})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(client.get("/api/hidden").json()["keys"], [])
+
+            response = client.post("/api/hidden", json={"node": "missing", "path": PROJECT})
             self.assertEqual(response.status_code, 404)
 
     def test_inbox_permission_reply(self):

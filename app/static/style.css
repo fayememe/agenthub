@@ -509,6 +509,65 @@ body.resizing #oc-frame {
   background: transparent;
 }
 
+.misc-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  text-align: left;
+  padding: 5px 7px 5px 20px;
+  color: var(--text-dim);
+}
+
+.misc-row:hover {
+  background: var(--bg-hover);
+}
+
+.misc-name {
+  color: var(--text-dim);
+  font-style: italic;
+  font-weight: 600;
+}
+
+.misc-count {
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.misc-projects .project-row {
+  padding-left: 34px;
+}
+
+.project-row.hidden .project-name {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.hidden-tag {
+  border-style: dashed;
+  color: var(--text-faint);
+}
+
+.project-action {
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  padding: 2px 3px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.project-action:hover {
+  color: var(--text);
+}
+
 .activity-badge {
   flex: 0 0 auto;
   padding: 0 5px;

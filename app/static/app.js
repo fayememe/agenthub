@@ -98,6 +98,7 @@ const state = {
   tree: null,
   query: "",
   collapsedNodes: new Set(storage.get("agenthub.collapsedNodes", [])),
+  miscExpanded: new Set(storage.get("agenthub.miscExpanded", [])),
   expanded: new Set(storage.get("agenthub.expanded", [])),
   sessions: new Map(),
   favorites: new Set(storage.get("agenthub.favorites", [])),
@@ -792,7 +793,7 @@ function renderTree() {
   const favorites = [];
   for (const node of state.tree.nodes) {
     for (const project of node.projects || []) {
-      if (state.favorites.has(favKey(node.name, project.path))) {
+      if (!project.hidden && state.favorites.has(favKey(node.name, project.path))) {
         favorites.push({ node, project });
       }
     }
@@ -819,7 +820,7 @@ function renderTree() {
             },
             "★",
           ),
-          el("span", { class: "project-name" }, project.name),
+          el("span", { class: "project-name" }, projectLabel(project)),
           el("span", { class: "favorite-node" }, node.name),
         ),
       );
@@ -830,8 +831,18 @@ function renderTree() {
   let visibleNodes = 0;
   for (const node of state.tree.nodes) {
     const nodeMatches = !query || node.name.toLowerCase().includes(query);
-    const projects = (node.projects || []).filter((project) => nodeMatches || matches(node, project, query));
-    if (!nodeMatches && projects.length === 0) continue;
+    const matching = (node.projects || []).filter(
+      (project) => nodeMatches || matches(node, project, query),
+    );
+    const visibleProjects = matching.filter(
+      (project) => project.kind !== "other" && !project.hidden,
+    );
+    const hiddenProjects = matching.filter(
+      (project) => project.kind !== "other" && project.hidden,
+    );
+    const otherProject = matching.find((project) => project.kind === "other") || null;
+    const hasMisc = hiddenProjects.length > 0 || Boolean(otherProject);
+    if (!nodeMatches && !visibleProjects.length && !hasMisc) continue;
     visibleNodes += 1;
 
     const collapsed = !query && state.collapsedNodes.has(node.name);
@@ -865,10 +876,13 @@ function renderTree() {
     );
 
     const projectsEl = el("div", { class: "node-projects" });
-    for (const project of projects) {
+    for (const project of visibleProjects) {
       projectsEl.append(renderProject(node, project));
     }
-    if (!projects.length) {
+    if (hasMisc) {
+      projectsEl.append(renderMisc(node, hiddenProjects, otherProject, query));
+    }
+    if (!visibleProjects.length && !hasMisc) {
       projectsEl.append(el("div", { class: "session-empty" }, node.online ? "no projects" : "offline"));
     }
 
@@ -878,6 +892,50 @@ function renderTree() {
   if (!visibleNodes) {
     els.tree.append(el("div", { class: "session-empty" }, query ? "No matching projects" : "No projects yet"));
   }
+}
+
+function renderMisc(node, hiddenProjects, otherProject, query) {
+  const expanded = state.miscExpanded.has(node.name) || Boolean(query);
+  const row = el(
+    "div",
+    {
+      class: `misc-row${expanded ? " expanded" : ""}`,
+      role: "button",
+      tabindex: "0",
+      title: "Hidden projects and uncategorized sessions",
+      onclick: () => toggleMisc(node),
+      onkeydown: (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleMisc(node);
+        }
+      },
+    },
+    el("span", { class: "project-caret" }, expanded ? "▾" : "▸"),
+    el("span", { class: "misc-name" }, "[misc]"),
+    hiddenProjects.length
+      ? el("span", { class: "misc-count", title: `${hiddenProjects.length} hidden projects` }, hiddenProjects.length)
+      : null,
+  );
+  const wrapper = el("div", { class: "misc" }, row);
+  if (expanded) {
+    const body = el("div", { class: "misc-projects" });
+    for (const project of hiddenProjects) body.append(renderProject(node, project));
+    if (otherProject) body.append(renderProject(node, otherProject));
+    wrapper.append(body);
+  }
+  return wrapper;
+}
+
+function toggleMisc(node) {
+  if (state.miscExpanded.has(node.name)) state.miscExpanded.delete(node.name);
+  else state.miscExpanded.add(node.name);
+  storage.set("agenthub.miscExpanded", [...state.miscExpanded]);
+  renderTree();
+}
+
+function projectLabel(project) {
+  return project.kind === "other" ? "[other]" : project.name;
 }
 
 function matches(node, project, query) {
@@ -890,6 +948,8 @@ function renderProject(node, project) {
   const selected = state.selected?.node === node.name && state.selected?.path === project.path;
   const expanded = state.expanded.has(key);
   const favorite = state.favorites.has(favKey(node.name, project.path));
+  const hidden = Boolean(project.hidden);
+  const label = projectLabel(project);
 
   const caret = el(
     "button",
@@ -933,10 +993,43 @@ function renderProject(node, project) {
   if (updated) meta.append(el("span", { title: "last session activity" }, updated));
   const activity = projectActivityInfo(project);
 
+  let hideButton = null;
+  if (project.kind !== "other") {
+    if (hidden) {
+      if (project.hidden_reason === "manual") {
+        hideButton = el(
+          "button",
+          {
+            class: "project-action",
+            title: "Unhide project",
+            onclick: (event) => {
+              event.stopPropagation();
+              setProjectHidden(node, project, false);
+            },
+          },
+          "⊕",
+        );
+      }
+    } else {
+      hideButton = el(
+        "button",
+        {
+          class: "project-action",
+          title: "Hide project",
+          onclick: (event) => {
+            event.stopPropagation();
+            setProjectHidden(node, project, true);
+          },
+        },
+        "⊘",
+      );
+    }
+  }
+
   const row = el(
     "div",
     {
-      class: `project-row${selected ? " active" : ""}${project.kind === "other" ? " other" : ""}`,
+      class: `project-row${selected ? " active" : ""}${project.kind === "other" ? " other" : ""}${hidden ? " hidden" : ""}`,
       title: tip,
       role: "button",
       tabindex: "0",
@@ -949,16 +1042,17 @@ function renderProject(node, project) {
       },
     },
     caret,
-    el("span", { class: "project-main" }, el("span", { class: "project-name" }, project.name)),
+    el("span", { class: "project-main" }, el("span", { class: "project-name" }, label)),
     activity ? activityBadge(activity) : null,
     el(
       "span",
       { class: "project-tags" },
-      project.kind === "other" ? el("span", { class: "vcs other" }, "other") : null,
+      project.kind === "other" ? el("span", { class: "vcs other" }, "global") : null,
+      hidden ? el("span", { class: "vcs hidden-tag" }, project.hidden_reason === "manual" ? "hidden" : "stale") : null,
       project.vcs ? el("span", { class: "vcs" }, project.vcs) : null,
     ),
     meta,
-    el("span", { class: "project-actions" }, star),
+    el("span", { class: "project-actions" }, star, hideButton),
   );
 
   const wrapper = el("div", { class: "project" }, row);
@@ -1052,6 +1146,25 @@ async function toggleFavorite(node, project) {
     storage.set("agenthub.favorites", [...state.favorites]);
     renderTree();
     toast(`Failed to sync favorite: ${error.message || error}`);
+  }
+}
+
+async function setProjectHidden(node, project, hidden) {
+  const params = new URLSearchParams({ node: node.name, path: project.path });
+  try {
+    if (hidden) {
+      await api("/api/hidden", {
+        method: "POST",
+        body: JSON.stringify({ node: node.name, path: project.path }),
+      });
+      state.miscExpanded.add(node.name);
+      storage.set("agenthub.miscExpanded", [...state.miscExpanded]);
+    } else {
+      await api(`/api/hidden?${params}`, { method: "DELETE" });
+    }
+    await loadTree(true);
+  } catch (error) {
+    toast(`Failed to update hidden state: ${error.message || error}`);
   }
 }
 
@@ -1256,7 +1369,7 @@ async function openProject(node, project, sessionId = null, options = {}) {
     node: node.name,
     path: project.path,
     b64: project.b64,
-    name: project.name,
+    name: projectLabel(project),
     sessionId: initialSessionId,
     title: initialTitle,
   };
@@ -2305,15 +2418,11 @@ function updateSummary() {
   if (!state.tree) return;
   const nodes = state.tree.nodes || [];
   const online = nodes.filter((node) => node.online).length;
-  const projects = nodes.reduce(
-    (count, node) => count + (node.projects || []).filter((project) => project.kind !== "other").length,
-    0,
+  const visible = nodes.flatMap((node) =>
+    (node.projects || []).filter((project) => project.kind !== "other" && !project.hidden),
   );
-  const sessions = nodes.reduce(
-    (count, node) =>
-      count + (node.projects || []).reduce((sum, project) => sum + Number(project.session_count || 0), 0),
-    0,
-  );
+  const projects = visible.length;
+  const sessions = visible.reduce((sum, project) => sum + Number(project.session_count || 0), 0);
   const waiting = waitingCount();
   els.nodeSummary.textContent = `${online}/${nodes.length} online · ${projects} projects · ${sessions} sessions`;
   els.updatedAt.textContent = `${waiting ? `${waiting} waiting · ` : ""}${clockTime(state.tree.generated_at)}`;

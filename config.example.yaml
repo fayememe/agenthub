@@ -6,6 +6,8 @@ hub:
 
 refresh_interval_s: 20
 request_timeout_s: 6
+# Auto-hide projects with no session activity for this many days; 0 disables.
+hide_stale_days: 90
 state_db: ~/.local/share/agenthub/agenthub.db
 
 # Optional read-only MCP. Put the token in ~/.config/agenthub/env:

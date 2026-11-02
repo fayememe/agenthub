@@ -20,6 +20,13 @@ class FavoriteStore:
             "created_at INTEGER NOT NULL, "
             "PRIMARY KEY (node, path))"
         )
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS hidden_projects ("
+            "node TEXT NOT NULL, "
+            "path TEXT NOT NULL, "
+            "created_at INTEGER NOT NULL, "
+            "PRIMARY KEY (node, path))"
+        )
         self._conn.commit()
 
     def list(self) -> list[dict]:
@@ -41,6 +48,29 @@ class FavoriteStore:
         with self._lock:
             self._conn.execute(
                 "DELETE FROM favorites WHERE node = ? AND path = ?",
+                (node, path),
+            )
+            self._conn.commit()
+
+    def list_hidden(self) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT node, path, created_at FROM hidden_projects ORDER BY created_at DESC"
+            ).fetchall()
+        return [{"node": row[0], "path": row[1], "created_at": row[2]} for row in rows]
+
+    def hide(self, node: str, path: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO hidden_projects (node, path, created_at) VALUES (?, ?, ?)",
+                (node, path, int(time.time() * 1000)),
+            )
+            self._conn.commit()
+
+    def unhide(self, node: str, path: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM hidden_projects WHERE node = ? AND path = ?",
                 (node, path),
             )
             self._conn.commit()

@@ -38,6 +38,7 @@ class HubConfig:
     refresh_interval_s: int
     request_timeout_s: float
     state_db: str
+    hide_stale_days: int
     nodes: tuple[NodeConfig, ...]
 
     @property
@@ -105,6 +106,7 @@ def load_config(path: str | Path | None = None) -> HubConfig:
             or data.get("state_db")
             or "~/.local/share/agenthub/agenthub.db"
         ),
+        hide_stale_days=max(0, int(data.get("hide_stale_days", 90) or 0)),
         nodes=tuple(nodes),
     )
 

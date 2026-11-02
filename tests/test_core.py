@@ -18,6 +18,7 @@ class ConfigTests(unittest.TestCase):
         config = load_config(ROOT / "config.example.yaml")
         self.assertEqual(config.port, 8670)
         self.assertEqual(config.name, "agenthub")
+        self.assertEqual(config.hide_stale_days, 90)
         self.assertEqual([node.name for node in config.nodes], ["local", "node2"])
         self.assertEqual([node.proxy_port for node in config.nodes], [8671, 8672])
 

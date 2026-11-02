@@ -24,6 +24,7 @@ from .files import FilePathError, FileService, FileTooLarge, relative_path
 from .oc import OcClient
 from .proxy import create_proxy_app
 from .store import FavoriteStore
+from .visibility import project_visibility
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -380,10 +381,28 @@ async def api_host_status(
 async def api_tree(refresh: bool = False) -> dict[str, Any]:
     tree = await app.state.cache.get(force=refresh)
     proxy_errors: dict[str, str] = getattr(app.state, "proxy_errors", {})
+    hidden = {
+        f"{item['node']}:{item['path']}" for item in app.state.store.list_hidden()
+    }
+    favorites = {
+        f"{item['node']}:{item['path']}" for item in app.state.store.list()
+    }
+    now_ms = int(time.time() * 1000)
     for node in tree.get("nodes", []):
         error = proxy_errors.get(node["name"])
         if error:
             node["error"] = node.get("error") or error
+        for project in node.get("projects", []):
+            key = f"{node['name']}:{project.get('path')}"
+            is_hidden, reason = project_visibility(
+                project,
+                manual_hidden=key in hidden,
+                favorite=key in favorites,
+                hide_stale_days=app.state.config.hide_stale_days,
+                now_ms=now_ms,
+            )
+            project["hidden"] = is_hidden
+            project["hidden_reason"] = reason
     return tree
 
 
@@ -430,6 +449,34 @@ def api_favorite_add(body: dict[str, Any]) -> dict[str, bool]:
 @app.delete("/api/favorites")
 def api_favorite_remove(node: str = Query(...), path: str = Query(...)) -> dict[str, bool]:
     app.state.store.remove(node, path)
+    return {"ok": True}
+
+
+@app.get("/api/hidden")
+def api_hidden() -> dict[str, Any]:
+    items = app.state.store.list_hidden()
+    return {
+        "items": items,
+        "keys": [f"{item['node']}:{item['path']}" for item in items],
+    }
+
+
+@app.post("/api/hidden")
+def api_hidden_add(body: dict[str, Any]) -> dict[str, bool]:
+    node = str(body.get("node") or "").strip()
+    path = str(body.get("path") or "").strip()
+    config: HubConfig = app.state.config
+    if not node or not path:
+        raise HTTPException(status_code=422, detail="node and path required")
+    if not any(item.name == node for item in config.nodes):
+        raise HTTPException(status_code=404, detail="unknown node")
+    app.state.store.hide(node, path)
+    return {"ok": True}
+
+
+@app.delete("/api/hidden")
+def api_hidden_remove(node: str = Query(...), path: str = Query(...)) -> dict[str, bool]:
+    app.state.store.unhide(node, path)
     return {"ok": True}
 
 
